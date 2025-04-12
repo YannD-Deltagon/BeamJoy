@@ -702,22 +702,24 @@ return the full config raw data
 ]]
 local function getFullConfig(config)
     local veh = M.getCurrentVehicle()
-    if not config and not veh then
-        return nil
+    if not config and not veh then return nil end
+
+    if type(config) == "string" then
+        config = jsonReadFile(config)
+    elseif type(config) ~= "table" and veh and type(veh.partConfig) == "string" then
+        config = jsonReadFile(veh.partConfig)
     end
 
--- Changes for 0.35 handling of new vehicle part selector.https://github.com/my-name-is-samael/BeamJoy/issues/91#issuecomment-2782916143
-    config = MPHelpers.simplifyVehConfig(config) or MPHelpers.simplifyVehConfig(veh.partConfig)
-    if isConfigCustom(config) then
-        local fn = load(svar("return {1}", { config:gsub("'", "") }))
-        if type(fn) == "function" then
-            local status, data = pcall(fn)
-            return status and data or nil
-        end
-    else
-        return jsonReadFile(config)
+    if type(config) == "table" then
+        return MPHelpers.simplifyVehConfig(config)
     end
+
+    return nil
 end
+
+    return nil
+end
+
 
 local function getType(model)
     if not M.allVehicleConfigs then
