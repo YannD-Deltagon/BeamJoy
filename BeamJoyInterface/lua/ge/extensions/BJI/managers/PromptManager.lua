@@ -158,9 +158,25 @@ end
 
 M.onLoad = function()
     reset()
+    -- Since BeamNG 0.39 the game no longer defines these three functions itself, but its Vue
+    -- recovery popup (ui-vue Recovery.vue) still calls them through the Lua bridge at click
+    -- time, so BeamJoy is now their sole provider.
+    M.baseFunctions = {
+        core_recoveryPrompt = {
+            uiPopupCancelPressed = extensions.core_recoveryPrompt.uiPopupCancelPressed,
+            uiPopupButtonPressed = extensions.core_recoveryPrompt.uiPopupButtonPressed,
+            getUIData = extensions.core_recoveryPrompt.getUIData,
+        }
+    }
     extensions.core_recoveryPrompt.uiPopupCancelPressed = onCancel
     extensions.core_recoveryPrompt.uiPopupButtonPressed = onButtonPressed
     extensions.core_recoveryPrompt.getUIData = getUIData
+    -- restore on unload (was missing, leaving dangling BJI closures on the game module)
+    BJI_Events.addListener(BJI_Events.EVENTS.ON_UNLOAD, function()
+        extensions.core_recoveryPrompt.uiPopupCancelPressed = M.baseFunctions.core_recoveryPrompt.uiPopupCancelPressed
+        extensions.core_recoveryPrompt.uiPopupButtonPressed = M.baseFunctions.core_recoveryPrompt.uiPopupButtonPressed
+        extensions.core_recoveryPrompt.getUIData = M.baseFunctions.core_recoveryPrompt.getUIData
+    end, M._name)
 end
 
 M.show = show

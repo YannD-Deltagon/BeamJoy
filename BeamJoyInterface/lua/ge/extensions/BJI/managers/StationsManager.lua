@@ -334,7 +334,8 @@ end
 
 ---@param energyType string?
 local function setGPS(energyType)
-    if not ctxt.isOwner then return end
+    -- ctxt is only assigned by renderTick; guard against calls before the first frame
+    if not ctxt or not ctxt.isOwner then return end
 
     ---@param job NGJob
     extensions.core_jobsystem.create(function(job)

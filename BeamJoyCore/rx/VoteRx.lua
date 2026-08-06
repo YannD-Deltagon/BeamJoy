@@ -34,7 +34,9 @@ function ctrl.KickStart(ctxt)
 end
 
 ---@param ctxt BJCContext
-function ctrl.KicVotek(ctxt)
+-- endpoint name must match BJI_EVENTS.VOTE.RX.KICK_VOTE ("KickVote") sent by the client;
+-- it was misspelled "KicVotek" since 2.0, which silently broke kick voting at protocol level
+function ctrl.KickVote(ctxt)
     if not BJCPerm.hasPermission(ctxt.senderID, BJCPerm.PERMISSIONS.VOTE_KICK) then
         error({ key = "rx.errors.insufficientPermissions" })
     elseif BJCPerm.isStaff(ctxt.senderID) then

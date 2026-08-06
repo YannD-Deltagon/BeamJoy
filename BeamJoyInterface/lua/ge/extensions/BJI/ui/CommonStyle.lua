@@ -91,19 +91,17 @@ U.MOUSE_BUTTONS = {
     MIDDLE = im.MouseButton_Middle
 }
 
+-- reverse lookup built once; SetStyleColor used to linear-scan the ~40 STYLE_COLS entries on
+-- every push, and it runs dozens of times per frame (InitDefaultStyles + every builder)
+local VALID_STYLE_COLS = {}
+for _, v in pairs(U.STYLE_COLS) do
+    VALID_STYLE_COLS[v] = true
+end
+
 ---@param col number
 ---@param color vec4
 function U.SetStyleColor(col, color)
-    local found = false
-    for _, v in pairs(U.STYLE_COLS) do
-        if found then
-            break
-        end
-        if col == v then
-            found = true
-        end
-    end
-    if not found then
+    if not VALID_STYLE_COLS[col] then
         error(string.var("Invalid style column: {1}", { col }))
         return
     end
@@ -125,6 +123,7 @@ U.BTN_PRESETS = {}
 U.INPUT_PRESETS = {}
 
 U.BJIThemeLoaded = false
+local stylesCount = 0
 ---@param data { Fields: table<string, number[]>, Text: table<string, number[]>, Button: table<string, number[][]>, Input: table<string, number[][]> }
 function U.LoadTheme(data)
     if U.BJIThemeLoaded then
@@ -155,6 +154,34 @@ function U.LoadTheme(data)
         U.INPUT_PRESETS[k] = colors
     end
 
+    -- Preset normalization: the builders push these colors directly every frame (they no
+    -- longer copy presets per call), so every slot they index must be non-nil after this
+    -- point. Button presets: [1..3] = bg/hovered/active, [4] = text/icon color. Input
+    -- presets: [1] = frame bg, [2] = text override, [3..6] = hovered/active/grab/grab-active.
+    -- Required slots are backfilled too: themes come from the server's bjc.json which admins
+    -- hand-edit; a missing slot would otherwise skip a push while the builder still pops a
+    -- fixed count, underflowing the frame-level style stack.
+    local fallback = U.RGBA(.5, .5, .5, .5)
+    for k, preset in pairs(U.BTN_PRESETS) do
+        preset[1] = preset[1] or fallback
+        preset[2] = preset[2] or preset[1]
+        preset[3] = preset[3] or preset[1]
+        preset[4] = preset[4] or
+            (k == "DISABLED" and U.TEXT_COLORS.DISABLED or U.TEXT_COLORS.DEFAULT)
+    end
+    for k, preset in pairs(U.INPUT_PRESETS) do
+        preset[1] = preset[1] or fallback
+        preset[2] = preset[2] or
+            (k == "DISABLED" and U.TEXT_COLORS.DISABLED or U.TEXT_COLORS.DEFAULT)
+        preset[3] = preset[3] or preset[1]
+        preset[4] = preset[4] or preset[1]
+        preset[5] = preset[5] or preset[1]
+        preset[6] = preset[6] or preset[1]
+    end
+
+    -- style count is stable between theme loads; cached for the per-frame ResetStyles pop
+    stylesCount = table.length(U.BJIStyles)
+
     -- pre-applying those to have multi-windows colors right
     U.SetStyleColor(U.STYLE_COLS.TITLE_BG, U.BJIStyles[U.STYLE_COLS.TITLE_BG])
     U.SetStyleColor(U.STYLE_COLS.TITLE_BG_ACTIVE, U.BJIStyles[U.STYLE_COLS.TITLE_BG_ACTIVE])
@@ -169,7 +196,7 @@ function U.InitDefaultStyles()
 end
 
 function U.ResetStyles()
-    U.PopStyleColor(table.length(U.BJIStyles) + 1)
+    U.PopStyleColor(stylesCount + 1)
 end
 
 return U

@@ -303,7 +303,7 @@ local function drawHeader(ctxt)
             { btnStyle = BJI.Utils.Style.BTN_PRESETS.SUCCESS,
                 disabled = W.headerBtns.loadPreviousDisabled }) then
         BJI_Scenario.tryReplaceOrSpawn(ctxt.user.previousVehConfig.model, ctxt.user.previousVehConfig)
-        extensions.hook("trackNewVeh")
+        extensions.hook("onBeamMPTrackNewVehicle")
     end
     TooltipText(W.headerBtns.loadPreviousTooltip)
 
@@ -328,7 +328,7 @@ local function drawHeader(ctxt)
             local defaultVeh = BJI_Veh.getDefaultModelAndConfig()
             if defaultVeh then
                 BJI_Scenario.tryReplaceOrSpawn(defaultVeh.model, defaultVeh.config)
-                extensions.hook("trackNewVeh")
+                extensions.hook("onBeamMPTrackNewVehicle")
             end
         end
         TooltipText(W.headerBtns.loadDefaultTooltip)
@@ -337,7 +337,7 @@ local function drawHeader(ctxt)
                 { disabled = W.headerBtns.cloneCurrentDisabled,
                     width = width }) then
             BJI_Scenario.trySpawnNew(ctxt.veh.jbeam, ctxt.veh.veh.partConfig)
-            extensions.hook("trackNewVeh")
+            extensions.hook("onBeamMPTrackNewVehicle")
         end
         TooltipText(W.headerBtns.cloneCurrentTooltip)
 
@@ -361,7 +361,7 @@ local function drawHeader(ctxt)
                     BJI_Popup.createButton(BJI_Lang.get("common.buttons.cancel")),
                     BJI_Popup.createButton(BJI_Lang.get("common.buttons.confirm"), function()
                         BJI_Veh.deleteOtherPlayerVehicle()
-                        extensions.hook("trackNewVeh")
+                        extensions.hook("onBeamMPTrackNewVehicle")
                     end),
                 })
             end
@@ -373,7 +373,7 @@ local function drawHeader(ctxt)
                     disabled = W.headerBtns.removeOthersDisabled,
                     width = width }) then
             BJI_Veh.deleteOtherOwnVehicles()
-            extensions.hook("trackNewVeh")
+            extensions.hook("onBeamMPTrackNewVehicle")
         end
         TooltipText(W.headerBtns.removeOthersTooltip)
 

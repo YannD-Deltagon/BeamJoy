@@ -51,6 +51,22 @@ end
 --- gc prevention
 local state, ok, err
 
+-- Localized window titles were resolved through BJI_Lang on every window every frame; they
+-- only change with the language, so they are cached and invalidated on LANG_CHANGED.
+---@type table<string, string>
+local windowTitles = {}
+---@param w BJIWindow
+---@return string?
+local function getWindowTitle(w)
+    if not w.name then return nil end
+    local title = windowTitles[w.name]
+    if not title then
+        title = BJI_Lang.get(string.var("windows.{1}", { w.name }), w.name)
+        windowTitles[w.name] = title
+    end
+    return title
+end
+
 ---@param ctxt TickContext
 local function renderTick(ctxt)
     if not BJI.CLIENT_READY or not BJI_Cache.areBaseCachesFirstLoaded() or
@@ -82,7 +98,7 @@ local function renderTick(ctxt)
             })
         end
 
-        val1 = w.name and BJI_Lang.get(string.var("windows.{1}", { w.name }), w.name) or nil
+        val1 = getWindowTitle(w)
         if not val1 then
             LogError(string.var("Invalid name for window {1}", { w.name }))
         elseif M.showStates[w.name] then
@@ -128,6 +144,9 @@ local function onLoad()
     end)
 
     BJI_Events.addListener(BJI_Events.EVENTS.ON_UNLOAD, onUnload, M._name)
+    BJI_Events.addListener(BJI_Events.EVENTS.LANG_CHANGED, function()
+        windowTitles = {}
+    end, M._name)
 end
 
 M.onLoad = onLoad

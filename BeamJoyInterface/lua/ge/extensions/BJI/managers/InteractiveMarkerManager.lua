@@ -266,24 +266,13 @@ local function renderTick(ctxt)
     end
 end
 
-local function isStateFreeroam()
-    -- prevent the console flooding with with marker clearing logs
-    return extensions.core_gamestate.state and
-        table.includes({ "freeroam", "multiplayer" }, extensions.core_gamestate.state.state)
-end
-
+-- BeamNG 0.39 removed the gamestate gate from gameplay_markerInteraction: the module no longer
+-- has an isStateFreeroam function, and nothing there reads such a field anymore (marker
+-- visibility is now driven by bigmap/mission state instead). The override this manager used to
+-- install - which widened the freeroam check to also accept the "multiplayer" gamestate - is
+-- therefore a write nobody reads, so it is dropped rather than ported.
 M.onLoad = function()
     BJI_Events.addListener(BJI_Events.EVENTS.FAST_TICK, fastTick, M._name)
-
-    M.baseFunctions = {
-        gameplay_markerInteraction = {
-            isStateFreeroam = extensions.gameplay_markerInteraction.isStateFreeroam
-        }
-    }
-    extensions.gameplay_markerInteraction.isStateFreeroam = isStateFreeroam
-    BJI_Events.addListener(BJI_Events.EVENTS.ON_UNLOAD, function()
-        RollBackNGFunctionsWrappers(M.baseFunctions)
-    end, M._name)
 end
 M.renderTick = renderTick
 

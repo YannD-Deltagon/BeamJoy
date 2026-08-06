@@ -2,7 +2,9 @@ local W = {
     KEYS = {
         common = Table({ "controlSun", "timePlay", "ToD", "dayLength", "visibleDistance", "shadowDistance",
             "shadowSoftness", "shadowSplits", "shadowLogWeight" }),
-        day = Table({ "dayScale", "sunAzimuthOverride", "sunSize", "skyBrightness", "brightness", "rayleighScattering",
+        -- sunAzimuthOverride is gone: BeamNG 0.39 removed azimuthOverride from the engine
+        -- (setTimeOfDay field allow-list; astronomical sun model now) so the control was dead
+        day = Table({ "dayScale", "sunSize", "skyBrightness", "brightness", "rayleighScattering",
             "flareScale", "occlusionScale", "exposure" }),
         night = Table({ "nightScale", "moonAzimuth", "moonScale", "brightness", "moonElevation" }),
     },
@@ -20,7 +22,6 @@ local W = {
         night = "",
         dayScale = "",
         nightScale = "",
-        sunAzimuthOverride = "",
         sunSize = "",
         skyBrightness = "",
         brightness = "",
@@ -310,12 +311,13 @@ local function body()
             BJI_Env.Data.skyDay.dayScale = 1 - BJI_Env.Data.skyNight.nightScale
         end
 
+        -- moonAzimuth stays: it is applied through the ScatterSky object directly and still
+        -- works in 0.39; only the sun-side azimuth override row was removed (dead engine API)
         Table({
             { "skyDay.brightness",         "skyNight.brightness" },
-            { "skyDay.sunAzimuthOverride", "skyNight.moonAzimuth" },
-            { "skyDay.sunSize",            "skyNight.moonScale" },
-            { "skyDay.skyBrightness",      "skyNight.moonElevation" },
-            { "skyDay.rayleighScattering" },
+            { "skyDay.sunSize",            "skyNight.moonAzimuth" },
+            { "skyDay.skyBrightness",      "skyNight.moonScale" },
+            { "skyDay.rayleighScattering", "skyNight.moonElevation" },
             { "skyDay.exposure" },
             { "skyDay.flareScale" },
             { "skyDay.occlusionScale" }

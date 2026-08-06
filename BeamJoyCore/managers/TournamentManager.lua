@@ -222,9 +222,14 @@ end
 local function endTournament()
     M.endSoloActivity()
     if #M.activities > 0 and #M.players > 0 then
-        -- broadcast results
+        -- Broadcast results last-to-first. This used to MP.Sleep(200) between messages,
+        -- which froze the whole server Lua thread (ticks and network included) for
+        -- 0.2s * playerCount. The reveal cadence is kept by scheduling messages through
+        -- BJCAsync in batches (async granularity is 1s, so ~5 messages per second batch);
+        -- payloads are computed now since M.players may change after this returns.
+        local messages = {}
         for pos = #M.players, 1, -1 do
-            BJCChat.sendChatEvent("chat.events.tournamentResult", {
+            table.insert(messages, {
                 playerName = M.players[pos].playerName,
                 position = pos,
                 score = Range(1, #M.activities):map(function(iActivity)
@@ -234,8 +239,18 @@ local function endTournament()
                     return res + score
                 end, 0),
             })
-            if pos > 1 then
-                MP.Sleep(200)
+        end
+        -- task keys carry the current time so two tournaments ended within the same delay
+        -- window cannot overwrite each other's pending messages in the async task table
+        local runID = tostring(GetCurrentTime())
+        for i, payload in ipairs(messages) do
+            local delaySec = math.floor((i - 1) / 5)
+            if delaySec == 0 then
+                BJCChat.sendChatEvent("chat.events.tournamentResult", payload)
+            else
+                BJCAsync.delayTask(function()
+                    BJCChat.sendChatEvent("chat.events.tournamentResult", payload)
+                end, delaySec, "BJCTournamentResult" .. runID .. "-" .. tostring(i))
             end
         end
     end

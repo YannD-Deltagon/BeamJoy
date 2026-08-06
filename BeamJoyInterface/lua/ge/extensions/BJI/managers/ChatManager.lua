@@ -15,16 +15,36 @@ local M = {
     msgCounter = 1,
     queue = {},
 }
-local chatWindow = require("multiplayer.ui.chat")
+-- BeamMP 4.22.1 (BeamNG 0.39 compat) moved its chat window from the legacy HTML UI to an
+-- imgui window, and relocated the module from "multiplayer/ui/chat" to "beammp/ui/chat".
+-- Resolution is lazy and protected: requiring at load time would abort this whole manager
+-- when the module is missing (older BeamMP, or singleplayer). "beammp.ui.chat" is the path
+-- BeamMP itself requires (BeamMP/lua/ge/extensions/UI.lua:14), so Lua's module cache hands
+-- us the very same instance it renders from.
+local chatWindow
+---@return table? chat BeamMP chat module exposing addMessage(username, message, id, color)
+local function getBeamMPChat()
+    if chatWindow == nil then
+        local ok, mod = pcall(require, "beammp.ui.chat")
+        -- false marks "resolved but unavailable", so we only try once
+        chatWindow = (ok and type(mod) == "table") and mod or false
+    end
+    return chatWindow or nil
+end
 
 -- color is not working for now
 local function _printChat(senderName, message, color)
+    -- Note: the "chatMessage" guihook has no consumer left in BeamNG 0.39 (the chat is no
+    -- longer an HTML UI app), it is kept only for third-party listeners.
     guihooks.trigger("chatMessage", {
         id = M.msgCounter,
         color = color,
         message = senderName and string.var("{1}: {2}", { senderName, message }) or message,
     })
-    chatWindow.addMessage(senderName or "", message, M.msgCounter, color)
+    local chatWindow = getBeamMPChat()
+    if chatWindow then
+        chatWindow.addMessage(senderName or "", message, M.msgCounter, color)
+    end
 
     M.msgCounter = M.msgCounter + 1
 end

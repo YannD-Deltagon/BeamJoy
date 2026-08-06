@@ -15,15 +15,18 @@ local M = {
     ---@type tablelib<integer, BJISettingConfig>
     config = Table({
         -- Traffic
+        -- BeamNG 0.39 removed gameplay_traffic.onSettingsChanged: traffic no longer reacts to a
+        -- settings-changed callback, it reads these settings on demand instead (see
+        -- gameplay/traffic.lua:771 and gameplay/traffic/vehicle.lua:565 for trafficEnableSwitching).
+        -- The former onChange references resolved to nil here, so they are dropped; the settings
+        -- still apply, just from the next traffic vehicle activation onwards.
         {
             key = "trafficEnableSwitching",
             value = false,
-            onChange = extensions.gameplay_traffic.onSettingsChanged,
         },
         {
             key = "trafficMinimap",
             value = false,
-            onChange = extensions.gameplay_traffic.onSettingsChanged,
         },
         {
             key = "trafficSimpleVehicles",

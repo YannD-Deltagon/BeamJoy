@@ -1,6 +1,8 @@
 local W = {
-    KEYS = Table({ "controlWeather", "fogDensity", "fogColor", "fogDensityOffset", "fogAtmosphereHeight", "cloudHeight",
-        "cloudCover", "cloudSpeed", "cloudExposure", "rainDrops", "dropSize", "dropMinSpeed",
+    -- fogDensityOffset and cloudExposure are gone: BeamNG 0.39 turned their engine setters
+    -- into deprecation no-op stubs (core/environment.lua), so the controls would silently lie
+    KEYS = Table({ "controlWeather", "fogDensity", "fogColor", "fogAtmosphereHeight", "cloudHeight",
+        "cloudCover", "cloudSpeed", "rainDrops", "dropSize", "dropMinSpeed",
         "dropMaxSpeed", "precipType" }),
 
     ---@type table<string, string>
@@ -103,8 +105,8 @@ local function body()
             BJI_Env.forceUpdate()
         end
 
-        Table({ "fogDensityOffset", "fogAtmosphereHeight", "cloudHeight", "cloudCover", "cloudSpeed",
-            "cloudExposure", "rainDrops", "dropSize", "dropMinSpeed", "dropMaxSpeed" }):forEach(function(k)
+        Table({ "fogAtmosphereHeight", "cloudHeight", "cloudCover", "cloudSpeed",
+            "rainDrops", "dropSize", "dropMinSpeed", "dropMaxSpeed" }):forEach(function(k)
             TableNewRow()
             Text(W.labels[k])
             TableNextColumn()

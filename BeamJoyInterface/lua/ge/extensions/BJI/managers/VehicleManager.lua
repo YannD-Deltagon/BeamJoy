@@ -786,7 +786,8 @@ end
 ---@param mpVeh BJIMPVehicle
 local function stopVehicle(mpVeh)
     if mpVeh.isLocal then
-        mpVeh.veh:applyClusterVelocityScaleAdd(veh:getRefNodeId(), 0, 0, 0, 0)
+        -- was reading a stale upvalue "veh" instead of the parameter, erroring on every call
+        mpVeh.veh:applyClusterVelocityScaleAdd(mpVeh.veh:getRefNodeId(), 0, 0, 0, 0)
     end
 end
 
@@ -1790,14 +1791,16 @@ local function overrideNGFunctions()
     })
 
     extensions.util_screenshotCreator.startWork = function(...)
-        M.baseFunctions.util_screenshotCreator.saveConfigBaseFunction(...)
+        -- the original is stored above under its own name (startWork)
+        M.baseFunctions.util_screenshotCreator.startWork(...)
         BJI_Async.delayTask(function()
             M.getAllVehicleConfigs(false, false, true)
             BJI_Events.trigger(BJI_Events.EVENTS.CONFIG_SAVED)
         end, 3000, "BJIVehPostSaveConfig")
     end
     extensions.core_vehicle_partmgmt.removeLocal = function(...)
-        M.baseFunctions.core_vehicle_partmgmt.removeConfigBaseFunction(...)
+        -- the original is stored above under its own name (removeLocal)
+        M.baseFunctions.core_vehicle_partmgmt.removeLocal(...)
         BJI_Async.delayTask(function()
             M.getAllVehicleConfigs(false, false, true)
             BJI_Events.trigger(BJI_Events.EVENTS.CONFIG_REMOVED)

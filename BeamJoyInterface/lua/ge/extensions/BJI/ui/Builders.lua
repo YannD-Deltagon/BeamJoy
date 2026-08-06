@@ -5,6 +5,71 @@ local lineHeight = 20
 local _, windowOpen, scale, footerHeight, flags, ok, err
 local val1, val2, val3, val4, val5, val6, val7
 
+-- V3.0 allocation control ------------------------------------------------------------------
+-- Dear ImGui copies every value handed to it (style colors, ImVec2 sizes, in/out pointers)
+-- during the call itself, so FFI objects can be scratch buffers reused across widgets instead
+-- of being reallocated per call per frame - the same module-level ptr/buffer pattern the
+-- game's own imgui code uses (see e.g. beammp/ui/chat.lua chatMessageBuf). Per-frame FFI and
+-- table churn was this UI layer's dominant cost: every widget used to rebuild its style
+-- preset as fresh ImVec4s plus a Table wrapper and closures, on every frame.
+
+-- read-only default for builders when the caller passes no data table; NEVER write into it
+local EMPTY = {}
+
+-- refreshed once per RenderWindow call (and used by menus/children/tooltips inside it)
+local uiScale = 1
+
+-- scratch cdata, safe to share since every builder finishes reading them before returning
+local scratchInt = ui_imgui.IntPtr(0)
+local scratchFloat = ui_imgui.FloatPtr(0)
+local scratchColor4 = ui_imgui.ArrayFloat(4)
+local scratchOpen = ui_imgui.BoolPtr(true)
+local scratchVecA = ui_imgui.ImVec2(0, 0)
+local scratchVecB = ui_imgui.ImVec2(0, 0)
+
+-- Widget id strings ("##id" / "label##id") are stable across frames, so they are memoized
+-- instead of being concatenated per call. The caches are wiped past a safety cap so windows
+-- generating pathological amounts of dynamic ids cannot grow them forever.
+-- these helpers keep their own locals on purpose: they run in the middle of builder calls,
+-- so they must not touch the shared val1..val7 scratch upvalues
+local hiddenIds, hiddenIdsCount = {}, 0
+---@param id string
+---@return string
+local function HiddenId(id)
+    local entry = hiddenIds[id]
+    if not entry then
+        if hiddenIdsCount > 4096 then
+            hiddenIds, hiddenIdsCount = {}, 0
+        end
+        entry = "##" .. id
+        hiddenIds[id] = entry
+        hiddenIdsCount = hiddenIdsCount + 1
+    end
+    return entry
+end
+local labeledIds, labeledIdsCount = {}, 0
+---@param label string
+---@param id string
+---@return string
+local function LabeledId(label, id)
+    local entry = labeledIds[id]
+    if not entry then
+        -- count NEW keys only: a label changing every frame (countdown in a button label)
+        -- rebuilds its entry in place and must not push the cache toward the wipe cap
+        if labeledIdsCount > 4096 then
+            labeledIds, labeledIdsCount = {}, 0
+        end
+        entry = { label = label, str = label .. "##" .. id }
+        labeledIds[id] = entry
+        labeledIdsCount = labeledIdsCount + 1
+    elseif entry.label ~= label then
+        entry.label = label
+        entry.str = label .. "##" .. id
+    end
+    return entry.str
+end
+---------------------------------------------------------------------------------------------
+
 -- IMGUI
 ---@class ImBool
 
@@ -77,17 +142,15 @@ GetContentRegionAvail = ui_imgui.GetContentRegionAvail or function() return {} e
 ---@param column integer
 ---@param color vec4
 PushStyleColor = function(column, color)
+    -- hot path: light guards only, no pcall (PushStyleColor2 does not throw on valid input)
     if type(column) ~= "number" then
         LogError("style type is invalid")
         return
-    elseif type(color) ~= "userdata" or not color.x then ---@diagnostic disable-line
+    elseif color == nil then
         LogError("color must be a vec4")
         return
     end
-    ok, err = pcall(ui_imgui.PushStyleColor2, column, color)
-    if not ok then
-        LogError(err)
-    end
+    ui_imgui.PushStyleColor2(column, color)
 end
 ---@param amount integer
 PopStyleColor = ui_imgui.PopStyleColor or function(amount) end
@@ -152,8 +215,7 @@ BeginMenu = function(label)
         if menuLevel == 1 then
             SetWindowFontScale(1)
         else
-            scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-            SetWindowFontScale(scale)
+            SetWindowFontScale(uiScale)
         end
     end
     return val1
@@ -301,34 +363,41 @@ local childLevel = 0
 ---@param id string
 ---@param data {size: point?, outsideSize: boolean?, border: boolean?, flags: integer[]?, bgColor: vec4?}?
 ---@return boolean isVisible
+-- transparent HEADER color pushed around children with a custom background; built once
+local childHeaderTransparent = ui_imgui.ImVec4(0, 0, 0, 0)
 BeginChild = function(id, data)
     if childLevel > 10 then
         LogError("Too many nested children", logTag)
         return false
     end
-    data = data or {}
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
+    data = data or EMPTY
+    -- size resolution on locals: the caller's descriptor (possibly reused) is never mutated
+    local sx, sy = -1, -1
     if data.size then
-        if data.size.x < -1 then                              -- substract from avail space
-            data.size = ImVec2(GetContentRegionAvail().x + data.size.x, data.size.y)
-        elseif data.size.x > -1 and not data.outsideSize then -- content size
-            data.size = ImVec2(data.size.x + BJI.Utils.UI.MARGINS.CHILD * 2, data.size.y)
+        sx, sy = data.size.x, data.size.y
+        if sx < -1 then                              -- substract from avail space
+            sx = GetContentRegionAvail().x + sx
+        elseif sx > -1 and not data.outsideSize then -- content size
+            sx = sx + BJI.Utils.UI.MARGINS.CHILD * 2
         end
-        if data.size.y < -1 then                              -- substract from avail space
-            data.size = ImVec2(data.size.x, GetContentRegionAvail().y + data.size.y)
-        elseif data.size.y > -1 and not data.outsideSize then -- content size
-            data.size = ImVec2(data.size.x, data.size.y + BJI.Utils.UI.MARGINS.CHILD * 2)
+        if sy < -1 then                              -- substract from avail space
+            sy = GetContentRegionAvail().y + sy
+        elseif sy > -1 and not data.outsideSize then -- content size
+            sy = sy + BJI.Utils.UI.MARGINS.CHILD * 2
         end
     end
-    data.size = data.size or ImVec2(-1, -1)
 
     if data.bgColor then
-        PushStyleColor(BJI.Utils.Style.STYLE_COLS.HEADER, BJI.Utils.Style.RGBA(0, 0, 0, 0))
+        PushStyleColor(BJI.Utils.Style.STYLE_COLS.HEADER, childHeaderTransparent)
         PushStyleColor(BJI.Utils.Style.STYLE_COLS.CHILD_BG, data.bgColor)
     end
 
-    val1 = table.length(data.flags) > 0 and Flags(table.unpack(data.flags or {})) or nil
-    val2 = ui_imgui.BeginChild1("##" .. id, data.size, data.border, val1)
+    val1 = nil
+    if data.flags and #data.flags > 0 then
+        val1 = Flags(table.unpack(data.flags))
+    end
+    scratchVecA.x, scratchVecA.y = sx, sy
+    val2 = ui_imgui.BeginChild1(HiddenId(id), scratchVecA, data.border, val1)
 
     if data.bgColor then
         PopStyleColor(2)
@@ -337,7 +406,7 @@ BeginChild = function(id, data)
     childLevel = childLevel + 1
     if val2 then
         if childLevel % 2 == 0 then
-            SetWindowFontScale(scale)
+            SetWindowFontScale(uiScale)
         else
             SetWindowFontScale(1)
         end
@@ -354,8 +423,7 @@ EndChild = function()
 
     childLevel = childLevel - 1
     if childLevel % 2 == 0 then
-        scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-        SetWindowFontScale(scale)
+        SetWindowFontScale(uiScale)
     else
         SetWindowFontScale(1)
     end
@@ -365,10 +433,10 @@ end
 ---@param data {color: vec4?}?
 ---@return boolean isOpen
 BeginTree = function(label, data)
-    data = data or {}
-    data.color = data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+    data = data or EMPTY
 
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, data.color)
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR,
+        data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT)
 
     val1 = ui_imgui.TreeNode1(label)
 
@@ -393,25 +461,20 @@ Separator = ui_imgui.Separator or function() end
 ---@param text any
 ---@param data {color: vec4?, align: "left"|"center"|"right"?, wrap: boolean?}?
 Text = function(text, data)
-    text = tostring(text)
-    data = data or {}
-    data.color = data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT
-    data.align = data.align or "left"
+    if type(text) ~= "string" then text = tostring(text) end
+    data = data or EMPTY
 
-    if data.align ~= "left" then
-        val1 = GetCursorPosX()
-        if data.align == "center" then    -- center
-            SetCursorPosX(val1 + (GetContentRegionAvail().x - CalcTextSize(text).x) / 2)
-        elseif data.align == "right" then -- right
-            SetCursorPosX(val1 + GetContentRegionAvail().x - CalcTextSize(text).x)
-        end
+    if data.align == "center" then
+        SetCursorPosX(GetCursorPosX() + (GetContentRegionAvail().x - CalcTextSize(text).x) / 2)
+    elseif data.align == "right" then
+        SetCursorPosX(GetCursorPosX() + GetContentRegionAvail().x - CalcTextSize(text).x)
     end
 
     if data.wrap then
         PushTextWrapPos(0)
     end
 
-    ui_imgui.TextColored(data.color, text)
+    ui_imgui.TextColored(data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT, text)
 
     if data.wrap then
         PopTextWrapPos()
@@ -430,8 +493,7 @@ end
 BeginTooltip = function()
     val2 = ui_imgui.BeginTooltip()
     if val2 then
-        scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-        SetWindowFontScale(scale)
+        SetWindowFontScale(uiScale)
     end
     return val2
 end
@@ -537,6 +599,12 @@ TABLE_COLUMNS_FLAGS = {
 ---@param columnsConfig {label: string, flags: integer[]?, width: integer?, userID: integer?}[]
 ---@param data {showHeader: boolean?, flags: integer[]?}?
 ---@return boolean isVisible
+local tableSizingFlags = {
+    [TABLE_FLAGS.SIZING_FIXED_FIT] = true,
+    [TABLE_FLAGS.SIZING_FIXED_SAME] = true,
+    [TABLE_FLAGS.SIZING_STRETCH_PROP] = true,
+    [TABLE_FLAGS.SIZING_STRETCH_SAME] = true,
+}
 BeginTable = function(id, columnsConfig, data)
     if not table.isArray(columnsConfig) then
         LogError(string.var("Table {1} must be an array", { id }))
@@ -546,22 +614,23 @@ BeginTable = function(id, columnsConfig, data)
         return false
     end
 
-    data = data or {}
-    data.flags = data.flags or {}
-    if not table.any(data.flags, function(v)
-            return Table({
-                TABLE_FLAGS.SIZING_FIXED_FIT, TABLE_FLAGS.SIZING_FIXED_SAME,
-                TABLE_FLAGS.SIZING_STRETCH_PROP, TABLE_FLAGS.SIZING_STRETCH_SAME
-            }):includes(v)
-        end) then -- fit max content size by default
-        table.insert(data.flags, TABLE_FLAGS.SIZING_FIXED_FIT)
+    data = data or EMPTY
+    -- flags folded on a local accumulator; caller's flag arrays are left untouched
+    val2, val3 = 0, false
+    if data.flags then
+        for i = 1, #data.flags do
+            val2 = Flags(val2, data.flags[i])
+            if tableSizingFlags[data.flags[i]] then val3 = true end
+        end
+    end
+    if not val3 then -- fit max content size by default
+        val2 = Flags(val2, TABLE_FLAGS.SIZING_FIXED_FIT)
     end
 
-    val1 = ui_imgui.BeginTable(id, #columnsConfig, Flags(table.unpack(data.flags)))
+    val1 = ui_imgui.BeginTable(id, #columnsConfig, val2)
     if val1 then
         for _, conf in ipairs(columnsConfig) do
-            conf.flags = conf.flags or {}
-            ui_imgui.TableSetupColumn(conf.label, #conf.flags > 0 and
+            ui_imgui.TableSetupColumn(conf.label, conf.flags and #conf.flags > 0 and
                 Flags(table.unpack(conf.flags)) or nil, conf.width, conf.userID)
         end
         if data.showHeader then
@@ -588,32 +657,46 @@ end
 ---@return boolean isExpanded
 BeginWindow = ui_imgui.Begin or function(title, openPtr, flags) return false end
 EndWindow = ui_imgui.End or function() end
-local baseFlagsWindow = Table({
+local baseWindowFlags = Flags(
     BJI.Utils.Style.WINDOW_FLAGS.NO_SCROLLBAR,
     BJI.Utils.Style.WINDOW_FLAGS.NO_SCROLL_WITH_MOUSE,
-    BJI.Utils.Style.WINDOW_FLAGS.NO_FOCUS_ON_APPEARING,
-})
+    BJI.Utils.Style.WINDOW_FLAGS.NO_FOCUS_ON_APPEARING
+)
+-- reusable body-child descriptor (its size vector is refreshed right before each use)
+local bodyChildData = { size = scratchVecB, outsideSize = true }
 ---@param ctxt TickContext
 ---@param title string
 ---@param data BJIWindow
 RenderWindow = function(ctxt, title, data)
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-    data.flags = data.flags or {}
+    -- single UI-scale read per window; every builder below uses the uiScale upvalue
+    uiScale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE) or 1
+    scale = uiScale
+    -- resolved on a local: assigning EMPTY into the persistent window descriptor would alias
+    -- the shared read-only sentinel into caller-owned tables (a later table.insert on any
+    -- window's flags would then corrupt every EMPTY user at once)
+    local dataFlags = data.flags or EMPTY
 
-    if not table.includes(data.flags, BJI.Utils.Style.WINDOW_FLAGS.ALWAYS_AUTO_RESIZE) then
+    -- real local: the shared valN scratch upvalues are clobbered by the builders that the
+    -- menu/header/body callbacks below invoke
+    local autoResize = table.includes(dataFlags, BJI.Utils.Style.WINDOW_FLAGS.ALWAYS_AUTO_RESIZE)
+    if not autoResize then
         if data.size then
-            SetNextWindowSize(ImVec2(data.size.x * scale, data.size.y * scale))
+            scratchVecA.x, scratchVecA.y = data.size.x * scale, data.size.y * scale
+            SetNextWindowSize(scratchVecA)
         else
-            data.minSize = data.minSize or ImVec2(0, 0)
-            data.maxSize = data.maxSize or ImVec2(ui_imgui.GetMainViewport().Size.x,
-                ui_imgui.GetMainViewport().Size.y)
-            SetNextWindowSizeConstraints(ImVec2(
-                data.minSize.x * scale,
-                data.minSize.y * scale
-            ), ImVec2(
-                data.maxSize.x >= 0 and data.maxSize.x * scale or -1,
-                data.maxSize.y >= 0 and data.maxSize.y * scale or -1
-            ))
+            if data.minSize then
+                scratchVecA.x, scratchVecA.y = data.minSize.x * scale, data.minSize.y * scale
+            else
+                scratchVecA.x, scratchVecA.y = 0, 0
+            end
+            if data.maxSize then
+                scratchVecB.x = data.maxSize.x >= 0 and data.maxSize.x * scale or -1
+                scratchVecB.y = data.maxSize.y >= 0 and data.maxSize.y * scale or -1
+            else
+                scratchVecB.x = ui_imgui.GetMainViewport().Size.x * scale
+                scratchVecB.y = ui_imgui.GetMainViewport().Size.y * scale
+            end
+            SetNextWindowSizeConstraints(scratchVecA, scratchVecB)
         end
     end
     if data.position then
@@ -622,15 +705,22 @@ RenderWindow = function(ctxt, title, data)
     SetNextWindowBgAlpha(BJI.Utils.Style.BJIStyles[BJI.Utils.Style.STYLE_COLS.WINDOW_BG] and
         BJI.Utils.Style.BJIStyles[BJI.Utils.Style.STYLE_COLS.WINDOW_BG].w or .5)
 
-    flags = Flags(table.unpack(
-        baseFlagsWindow:clone():addAll(data.flags, true)
-        :addAll({
-            data.size and BJI.Utils.Style.WINDOW_FLAGS.NO_RESIZE or nil,
-            data.menu and BJI.Utils.Style.WINDOW_FLAGS.MENU_BAR or nil
-        }, true)
-    ))
+    flags = baseWindowFlags
+    for i = 1, #dataFlags do
+        flags = Flags(flags, dataFlags[i])
+    end
+    if data.size then
+        flags = Flags(flags, BJI.Utils.Style.WINDOW_FLAGS.NO_RESIZE)
+    end
+    if data.menu then
+        flags = Flags(flags, BJI.Utils.Style.WINDOW_FLAGS.MENU_BAR)
+    end
 
-    windowOpen = data.onClose and BoolPtr(true) or nil
+    windowOpen = nil
+    if data.onClose then
+        scratchOpen[0] = true
+        windowOpen = scratchOpen
+    end
     if BeginWindow(title, windowOpen, flags) then
         SetWindowFontScale(scale)
 
@@ -646,7 +736,7 @@ RenderWindow = function(ctxt, title, data)
         end
 
         -- body
-        if table.includes(data.flags, BJI.Utils.Style.WINDOW_FLAGS.ALWAYS_AUTO_RESIZE) then
+        if autoResize then
             data.body(ctxt)
         else
             footerHeight = 0
@@ -655,9 +745,11 @@ RenderWindow = function(ctxt, title, data)
                 if data.footerLines then
                     footerHeight = footerHeight * data.footerLines(ctxt)
                 end
-                footerHeight = footerHeight * scale
+                footerHeight = footerHeight * uiScale
             end
-            if BeginChild(data.name .. "_Body", { size = ImVec2(-1, -footerHeight), outsideSize = true }) then
+            data._bodyChildId = data._bodyChildId or (data.name .. "_Body")
+            scratchVecB.x, scratchVecB.y = -1, -footerHeight
+            if BeginChild(data._bodyChildId, bodyChildData) then
                 data.body(ctxt)
             end
             EndChild()
@@ -680,41 +772,38 @@ end
 ---@param data {disabled: boolean?, btnStyle: vec4[]?, width: integer|-1?, noSound: boolean?, sound: string?}?
 ---@return boolean clicked
 Button = function(id, label, data)
-    data = data or {}
-    data.disabled = data.disabled or false
+    data = data or EMPTY
 
+    -- style presets are already ImVec4 arrays built once at LoadTheme (imgui copies pushed
+    -- colors, so sharing them is safe); custom caller styles fall back per missing slot
     if data.disabled then
-        data.btnStyle = BJI.Utils.Style.BTN_PRESETS.DISABLED
-        val1 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val1[4] = val1[4] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val1 = BJI.Utils.Style.BTN_PRESETS.DISABLED
+        val6 = val1[4] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        data.btnStyle = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
-        val1 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val1[4] = val1[4] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val1 = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
+        val6 = val1[4] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON, val1[1])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_HOVERED, val1[2])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_ACTIVE, val1[3])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val1[4])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
 
     val2 = nil
     if data.width then
-        if data.width == -1 then
-            data.width = GetContentRegionAvail().x
-        elseif data.width < -1 then
-            data.width = data.width + GetContentRegionAvail().x
+        val5 = data.width
+        if val5 == -1 then
+            val5 = GetContentRegionAvail().x
+        elseif val5 < -1 then
+            val5 = val5 + GetContentRegionAvail().x
         end
-        scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-        val2 = ImVec2(data.width, 23 * scale)
+        scratchVecA.x, scratchVecA.y = val5, 23 * uiScale
+        val2 = scratchVecA
     end
 
-    data.sound = not data.noSound and
-        (data.sound or BJI_Sound.SOUNDS.BIGMAP_HOVER) or nil
+    val3 = ui_imgui.Button(LabeledId(label, id), val2)
 
-    val3 = ui_imgui.Button(string.var("{1}##{2}", { label, id }), val2)
-
-    if val3 and data.sound then
-        BJI_Sound.play(data.sound)
+    if val3 and not data.noSound then
+        BJI_Sound.play(data.sound or BJI_Sound.SOUNDS.BIGMAP_HOVER)
     end
 
     PopStyleColor(4)
@@ -727,44 +816,38 @@ end
 ---@param data {step: integer?, stepFast: integer?, disabled: boolean?, inputStyle: vec4[]?, btnStyle: vec4[]?, width: integer|-1?, min: integer?, max: integer?}?
 ---@return integer? changed
 InputInt = function(id, value, data)
-    data = data or {}
-    data.disabled = data.disabled or false
-    data.step = data.step or 1
-    data.stepFast = data.stepFast or data.step * 2
+    data = data or EMPTY
 
     if data.disabled then
-        data.inputStyle = BJI.Utils.Style.INPUT_PRESETS.DISABLED
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
-        data.btnStyle = BJI.Utils.Style.BTN_PRESETS.DISABLED
-        val3 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
+        val2 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val3 = BJI.Utils.Style.BTN_PRESETS.DISABLED
     else
-        data.inputStyle = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
-        data.btnStyle = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
-        val3 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
+        val2 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val3 = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val2[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val2[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON, val3[1])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_HOVERED, val3[2])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_ACTIVE, val3[3])
 
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val7 = data.width or -1
+    if val7 < -1 then
+        val7 = val7 + GetContentRegionAvail().x
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val7)
 
-    val1 = IntPtr(value)
-    val5 = ui_imgui.InputInt("##" .. id, val1, data.step, data.stepFast)
+    scratchInt[0] = value
+    val5 = ui_imgui.InputInt(HiddenId(id), scratchInt,
+        data.step or 1, data.stepFast or (data.step or 1) * 2)
 
     PopStyleColor(5)
 
     val4 = nil
     if val5 and not data.disabled then
-        val4 = val1[0]
+        val4 = scratchInt[0]
         if data.min or data.max then
             val4 = math.clamp(val4, data.min, data.max)
         end
@@ -778,44 +861,38 @@ end
 ---@param data {step: integer?, stepFast: integer?, disabled: boolean?, inputStyle: vec4[]?, btnStyle: vec4[]?, width: integer|-1?, min: number?, max: number?, precision: integer?}?
 ---@return number? changed
 InputFloat = function(id, value, data)
-    data = data or {}
-    data.disabled = data.disabled or false
-    data.step = data.step or (1 / ((data.precision or 1) ^ 10))
-    data.stepFast = data.stepFast or data.step * 10
+    data = data or EMPTY
 
     if data.disabled then
-        data.inputStyle = BJI.Utils.Style.INPUT_PRESETS.DISABLED
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
-        data.btnStyle = BJI.Utils.Style.BTN_PRESETS.DISABLED
-        val3 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
+        val2 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val3 = BJI.Utils.Style.BTN_PRESETS.DISABLED
     else
-        data.inputStyle = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
-        data.btnStyle = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
-        val3 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
+        val2 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val3 = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val2[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val2[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON, val3[1])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_HOVERED, val3[2])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_ACTIVE, val3[3])
 
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val7 = data.width or -1
+    if val7 < -1 then
+        val7 = val7 + GetContentRegionAvail().x
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val7)
 
-    val1 = FloatPtr(value)
-    val5 = ui_imgui.InputFloat("##" .. id, val1, data.step, data.stepFast)
+    val6 = data.step or (1 / ((data.precision or 1) ^ 10))
+    scratchFloat[0] = value
+    val5 = ui_imgui.InputFloat(HiddenId(id), scratchFloat, val6, data.stepFast or val6 * 10)
 
     PopStyleColor(5)
 
     val4 = nil
     if val5 and not data.disabled then
-        val4 = val1[0]
+        val4 = scratchFloat[0]
         if data.min or data.max then
             val4 = math.clamp(math.round(val4, data.precision or 3), data.min, data.max)
         end
@@ -829,30 +906,28 @@ end
 ---@param data {size: integer?, disabled: boolean?, inputStyle: vec4[]?, width: integer|-1?}?
 ---@return string? changed
 InputText = function(id, value, data)
-    data = data or {}
-    data.size = data.size or 64
-    data.disabled = data.disabled or false
+    data = data or EMPTY
+    val6 = data.size or 64
 
     if data.disabled then
-        data.inputStyle = BJI.Utils.Style.INPUT_PRESETS.DISABLED
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val2 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val7 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        data.inputStyle = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val2 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val7 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val2[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val2[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val7)
 
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val5 = data.width or -1
+    if val5 < -1 then
+        val5 = val5 + GetContentRegionAvail().x
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val5)
 
-    val1 = StrPtr(value, data.size)
-    val3 = ui_imgui.InputText("##" .. id, val1, data.size)
+    -- text buffers stay per-call: their size varies per widget and imgui edits them in place
+    val1 = StrPtr(value, val6)
+    val3 = ui_imgui.InputText(HiddenId(id), val1, val6)
 
     val4 = nil
     if val3 and not data.disabled then
@@ -869,35 +944,37 @@ end
 ---@param data {size: integer?, width: integer|-1?, disabled: boolean?, inputStyle: vec4[]?}?
 ---@return string? changed
 InputTextMultiline = function(id, value, data)
-    data = data or {}
-    data.size = data.size or 128
-    data.disabled = data.disabled or false
+    data = data or EMPTY
+    val6 = data.size or 128
 
     if data.disabled then
-        data.inputStyle = BJI.Utils.Style.INPUT_PRESETS.DISABLED
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val2 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val7 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        data.inputStyle = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val2 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val7 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val2[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val2[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val7)
 
-    val1 = StrPtr(value, data.size)
-    val2 = table.length(value:split2("\n"))
-    val2 = val2 >= 2 and val2 or 2
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val1 = StrPtr(value, val6)
+    -- line count without the split2 table+strings allocation
+    val2, val3 = 1, 1
+    while true do
+        val3 = value:find("\n", val3, true)
+        if not val3 then break end
+        val2, val3 = val2 + 1, val3 + 1
     end
-    val3 = ImVec2(data.width, math.ceil(val2 * lineHeight * scale))
+    if val2 < 2 then val2 = 2 end
 
-    SetWindowFontScale(scale)
-    val4 = ui_imgui.InputTextMultiline("##" .. id, val1, data.size, val3)
+    val5 = data.width or -1
+    if val5 < -1 then
+        val5 = val5 + GetContentRegionAvail().x
+    end
+    scratchVecA.x, scratchVecA.y = val5, math.ceil(val2 * lineHeight * uiScale)
+
+    SetWindowFontScale(uiScale)
+    val4 = ui_imgui.InputTextMultiline(HiddenId(id), val1, val6, scratchVecA)
 
     PopStyleColor(2)
 
@@ -906,7 +983,7 @@ InputTextMultiline = function(id, value, data)
         val5 = StrPtrValue(val1)
     end
 
-    SetWindowFontScale(scale)
+    SetWindowFontScale(uiScale)
     return val5 ~= value and val5 or nil
 end
 
@@ -920,70 +997,64 @@ end
 ---@param data {disabled: boolean?, width: integer|-1?, inputStyle: vec4[]?}?
 ---@return any? changed
 Combo = function(id, value, options, data)
-    data = data or {}
-    data.disabled = data.disabled or #options < 2
+    data = data or EMPTY
+    val7 = data.disabled or #options < 2
 
-    if data.disabled then
-        data.inputStyle = BJI.Utils.Style.INPUT_PRESETS.DISABLED
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+    if val7 then
+        val2 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        data.inputStyle = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
-        val2 = Table(data.inputStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-        val2[2] = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val2 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val6 = val2[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val2[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val2[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
 
-    if data.disabled then
-        ---@type integer
-        val3 = 1
-        ---@type string[]
-        val4 = table.filter(options, function(el)
-            return el.value == value
-        end):map(function(el)
-            return el.label
-        end)
-        if #val4 == 0 then
-            val4 = { "" }
-        elseif #val4 > 1 then
-            val4 = { val4[1] }
+    -- the label array (and its FFI conversion below) is rebuilt per call since options come
+    -- from the caller each frame; plain loops instead of the filter/map closure chains
+    val3 = 1
+    if val7 then
+        val4 = { "" }
+        for _, el in ipairs(options) do
+            if el.value == value then
+                val4[1] = el.label
+                break
+            end
         end
     else
-        ---@type integer
-        val3 = 1
-        ---@type string[]
-        val4 = table.map(options, function(el, i)
+        val4 = {}
+        for i, el in ipairs(options) do
             if el.value == value then
                 val3 = i
             end
-            return el.label
-        end)
+            val4[i] = el.label
+        end
     end
 
-    if data.width then
-        if data.width < -1 then
-            data.width = data.width + GetContentRegionAvail().x
+    val5 = data.width
+    if val5 then
+        if val5 < -1 then
+            val5 = val5 + GetContentRegionAvail().x
         end
     else
-        data.width = 0
+        val5 = 0
         for _, v in ipairs(val4) do
-            val5 = BJI.Utils.UI.GetComboWidthByContent(v)
-            if val5 > data.width then
-                data.width = val5
+            val6 = BJI.Utils.UI.GetComboWidthByContent(v)
+            if val6 > val5 then
+                val5 = val6
             end
         end
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val5)
 
-    val3 = IntPtr(val3 - 1)
-    val5 = ui_imgui.Combo1("##" .. id, val3, ArrayCharPtr(val4))
+    scratchInt[0] = val3 - 1
+    val5 = ui_imgui.Combo1(HiddenId(id), scratchInt, ArrayCharPtr(val4))
 
     PopStyleColor(2)
 
     val6 = nil
-    if val5 and not data.disabled then
-        val6 = options[val3[0] + 1].value
+    if val5 and not val7 then
+        val6 = options[scratchInt[0] + 1].value
     end
 
     return val6 ~= value and val6 or nil
@@ -992,34 +1063,30 @@ end
 ---@param floatPercent number 0-1
 ---@param data {width: integer?, height: integer?, text: string?, color: vec4?}?
 ProgressBar = function(floatPercent, data)
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
-    data = data or {}
+    data = data or EMPTY
+    val2 = -1
     if data.width then
         val1 = tonumber(data.width)
         if val1 then
-            data.width = math.round(val1) * scale
+            val2 = math.round(val1) * uiScale
         elseif tostring(data.width):find("%d+%%") then
-            data.width = tonumber(tostring(data.width):match("^%d+")) / 100 * GetContentRegionAvail().x
+            val2 = tonumber(tostring(data.width):match("^%d+")) / 100 * GetContentRegionAvail().x
         end
-    end
-    if not data.width then
-        data.width = -1
     end
     if data.height then
-        data.height = data.height * scale
+        val3 = data.height * uiScale
+    elseif data.text then
+        val3 = CalcTextSize(data.text).y + 2
     else
-        if data.text then
-            data.height = CalcTextSize(data.text).y + 2
-        else
-            data.height = 5 * scale
-        end
+        val3 = 5 * uiScale
     end
 
     if data.color then
         PushStyleColor(BJI.Utils.Style.STYLE_COLS.PROGRESSBAR, data.color)
     end
 
-    ui_imgui.ProgressBar(floatPercent, ImVec2(data.width, data.height), data.text or "")
+    scratchVecA.x, scratchVecA.y = val2, val3
+    ui_imgui.ProgressBar(floatPercent, scratchVecA, data.text or "")
 
     if data.color then
         PopStyleColor(1)
@@ -1029,13 +1096,13 @@ end
 ---@param icon string
 ---@param data {big: boolean?, color: vec4?, borderColor: vec4?}?
 Icon = function(icon, data)
-    data = data or {}
-    data.color = data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+    data = data or EMPTY
 
-    val1 = ImVec2(BJI.Utils.UI.GetIconSize(data.big), 0)
-    val1.y = val1.x
+    val2 = BJI.Utils.UI.GetIconSize(data.big)
+    scratchVecA.x, scratchVecA.y = val2, val2
 
-    BJI_Context.GUI.uiIconImage(BJI.Utils.Icon.GetIcon(icon), val1, data.color, data.borderColor, nil)
+    BJI_Context.GUI.uiIconImage(BJI.Utils.Icon.GetIcon(icon), scratchVecA,
+        data.color or BJI.Utils.Style.TEXT_COLORS.DEFAULT, data.borderColor, nil)
 end
 
 ---@param id string
@@ -1043,42 +1110,41 @@ end
 ---@param data {big: boolean?, btnStyle: vec4[]?, onRelease: boolean?, disabled: boolean?, bgLess: boolean?, noSound: boolean?, sound: string?}?
 ---@return boolean clicked
 IconButton = function(id, icon, data)
-    data = data or {}
-    data.disabled = data.disabled or false
+    data = data or EMPTY
 
+    -- val1/val2/val3 = bg, hovered, active; val6 = icon color
     if data.disabled then
-        data.btnStyle = BJI.Utils.Style.BTN_PRESETS.DISABLED
         if data.bgLess then
-            val1 = Table(BJI.Utils.Style.BTN_PRESETS.TRANSPARENT):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-            val1[4] = data.btnStyle[1]
+            val4 = BJI.Utils.Style.BTN_PRESETS.TRANSPARENT
+            val1, val2, val3 = val4[1], val4[2], val4[3]
+            val6 = BJI.Utils.Style.BTN_PRESETS.DISABLED[1]
         else
-            val1 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-            val1[4] = val1[4] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+            val4 = BJI.Utils.Style.BTN_PRESETS.DISABLED
+            val1, val2, val3 = val4[1], val4[2], val4[3]
+            val6 = val4[4] or BJI.Utils.Style.TEXT_COLORS.DISABLED
         end
     else
         if data.bgLess then
-            val1 = Table(BJI.Utils.Style.BTN_PRESETS.TRANSPARENT):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-            val1[4] = data.btnStyle and data.btnStyle[1] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+            val4 = BJI.Utils.Style.BTN_PRESETS.TRANSPARENT
+            val1, val2, val3 = val4[1], val4[2], val4[3]
+            val6 = data.btnStyle and data.btnStyle[1] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
         else
-            data.btnStyle = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
-            val1 = Table(data.btnStyle):map(function(e) return ImVec4(e.x, e.y, e.z, e.w) end)
-            val1[4] = val1[4] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+            val4 = data.btnStyle or BJI.Utils.Style.BTN_PRESETS.INFO
+            val1, val2, val3 = val4[1], val4[2], val4[3]
+            val6 = val4[4] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
         end
     end
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_HOVERED, val1[2])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_ACTIVE, val1[3])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_HOVERED, val2)
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.BUTTON_ACTIVE, val3)
 
-    val2 = ImVec2(BJI.Utils.UI.GetIconSize(data.big), 0)
-    val2.y = val2.x
+    val5 = BJI.Utils.UI.GetIconSize(data.big)
+    scratchVecA.x, scratchVecA.y = val5, val5
 
-    data.sound = not data.noSound and
-        (data.sound or BJI_Sound.SOUNDS.BIGMAP_HOVER) or nil
-
-    val3 = BJI_Context.GUI.uiIconImageButton(BJI.Utils.Icon.GetIcon(icon), val2, val1[4], nil, val1[1],
+    val3 = BJI_Context.GUI.uiIconImageButton(BJI.Utils.Icon.GetIcon(icon), scratchVecA, val6, nil, val1,
         id, nil, nil, data.onRelease == true)
 
-    if val3 and data.sound then
-        BJI_Sound.play(data.sound)
+    if val3 and not data.noSound then
+        BJI_Sound.play(data.sound or BJI_Sound.SOUNDS.BIGMAP_HOVER)
     end
 
     PopStyleColor(2)
@@ -1086,34 +1152,32 @@ IconButton = function(id, icon, data)
     return val3 and not data.disabled
 end
 
-local baseFlagsColorPicker = Table({
-    ui_imgui.ColorEditFlags_NoInputs,
-})
+local colorPickerBaseFlags = ui_imgui.ColorEditFlags_NoInputs
 ---@param id string
 ---@param value vec4
 ---@param data {disabled: boolean?, flags: integer[]?}?
 ---@param alpha boolean?
 ---@return vec4? changed
 local CommonColorPicker = function(id, value, data, alpha)
-    data = data or {}
+    data = data or EMPTY
 
-    val1 = Flags(table.unpack(
-        baseFlagsColorPicker:clone()
-        :addAll({ data.disabled and ui_imgui.ColorEditFlags_NoPicker or nil })
-    ))
+    val1 = colorPickerBaseFlags
+    if data.disabled then
+        val1 = Flags(val1, ui_imgui.ColorEditFlags_NoPicker)
+    end
 
-    val2 = ArrayFloatPtr(4)
-    val2[0] = value.x
-    val2[1] = value.y
-    val2[2] = value.z
-    val2[3] = alpha and value.w or 1
+    scratchColor4[0] = value.x
+    scratchColor4[1] = value.y
+    scratchColor4[2] = value.z
+    scratchColor4[3] = alpha and value.w or 1
 
     val3 = alpha and ui_imgui.ColorEdit4 or ui_imgui.ColorEdit3
-    val4 = val3("##" .. id, val2, val1)
+    val4 = val3(HiddenId(id), scratchColor4, val1)
 
     val5 = nil
     if val4 and not data.disabled then
-        val5 = ImVec4(val2[0], val2[1], val2[2], alpha and val2[3] or 1)
+        -- allocated only on an actual edit, never on idle frames
+        val5 = ImVec4(scratchColor4[0], scratchColor4[1], scratchColor4[2], alpha and scratchColor4[3] or 1)
     end
 
     return not math.compareVec4(value, val5) and val5 or nil
@@ -1133,9 +1197,8 @@ ColorPickerAlpha = function(id, value, data)
     return CommonColorPicker(id, value, data, true)
 end
 
-local baseFlagsSlider = Table({
-    ui_imgui.SliderFlags_AlwaysClamp,
-})
+local sliderBaseFlags = ui_imgui.SliderFlags_AlwaysClamp
+local floatFormats = {}
 ---@param id string
 ---@param value integer
 ---@param min integer
@@ -1143,40 +1206,42 @@ local baseFlagsSlider = Table({
 ---@param data {disabled: boolean?, inputStyle: vec4[]?, width: integer?, formatRender: string?, flags: integer[]?}?
 ---@return integer? changed
 SliderInt = function(id, value, min, max, data)
-    data = data or {}
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
+    data = data or EMPTY
 
     if data.disabled then
-        val1 = table.clone(BJI.Utils.Style.INPUT_PRESETS.DISABLED)
-        val1[2] = val1[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val1 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val6 = val1[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        val1 = data.inputStyle or table.clone(BJI.Utils.Style.INPUT_PRESETS.DEFAULT)
-        val1[2] = val1[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val1 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val6 = val1[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val1[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val1[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG_HOVERED, val1[3])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG_ACTIVE, val1[4])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.SLIDER_GRAB, val1[5])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.SLIDER_GRAB_ACTIVE, val1[6])
 
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val7 = data.width or -1
+    if val7 < -1 then
+        val7 = val7 + GetContentRegionAvail().x
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val7)
 
-    val2 = IntPtr(value)
-    val3 = Flags(table.unpack(
-        baseFlagsSlider:clone():addAll(data.flags or {}, true)
-    ))
-    val4 = ui_imgui.SliderInt("##" .. id, val2, min, max, data.formatRender, val3)
+    val3 = sliderBaseFlags
+    if data.flags then
+        for i = 1, #data.flags do
+            val3 = Flags(val3, data.flags[i])
+        end
+    end
+    scratchInt[0] = value
+    val4 = ui_imgui.SliderInt(HiddenId(id), scratchInt, min, max, data.formatRender, val3)
 
     PopStyleColor(6)
 
     val5 = nil
     if val4 and not data.disabled then
-        val5 = val2[0]
+        val5 = scratchInt[0]
     end
 
     return val5 ~= value and val5 or nil
@@ -1189,44 +1254,52 @@ end
 ---@param data {disabled: boolean?, inputStyle: vec4[]?, width: integer?, formatRender: string?, flags: integer[]?, precision: integer?}?
 ---@return number? changed
 SliderFloat = function(id, value, min, max, data)
-    data = data or {}
-    scale = BJI_LocalStorage.get(BJI_LocalStorage.GLOBAL_VALUES.UI_SCALE)
+    data = data or EMPTY
 
     if data.disabled then
-        val1 = table.clone(BJI.Utils.Style.INPUT_PRESETS.DISABLED)
-        val1[2] = val1[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
+        val1 = BJI.Utils.Style.INPUT_PRESETS.DISABLED
+        val6 = val1[2] or BJI.Utils.Style.TEXT_COLORS.DISABLED
     else
-        val1 = data.inputStyle or table.clone(BJI.Utils.Style.INPUT_PRESETS.DEFAULT)
-        val1[2] = val1[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
+        val1 = data.inputStyle or BJI.Utils.Style.INPUT_PRESETS.DEFAULT
+        val6 = val1[2] or BJI.Utils.Style.TEXT_COLORS.DEFAULT
     end
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG, val1[1])
-    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val1[2])
+    PushStyleColor(BJI.Utils.Style.STYLE_COLS.TEXT_COLOR, val6)
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG_HOVERED, val1[3])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.FRAME_BG_ACTIVE, val1[4])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.SLIDER_GRAB, val1[5])
     PushStyleColor(BJI.Utils.Style.STYLE_COLS.SLIDER_GRAB_ACTIVE, val1[6])
 
-    data.width = data.width or -1
-    if data.width < -1 then
-        data.width = data.width + GetContentRegionAvail().x
+    val7 = data.width or -1
+    if val7 < -1 then
+        val7 = val7 + GetContentRegionAvail().x
     end
-    SetNextItemWidth(data.width)
+    SetNextItemWidth(val7)
 
-    if not data.formatRender and data.precision then
-        data.formatRender = "%." .. data.precision .. "f"
+    val6 = data.formatRender
+    if not val6 and data.precision then
+        -- per-precision format strings are tiny and few; memoized in a static table
+        val6 = floatFormats[data.precision]
+        if not val6 then
+            val6 = "%." .. data.precision .. "f"
+            floatFormats[data.precision] = val6
+        end
     end
 
-    val2 = FloatPtr(value)
-    val3 = Flags(table.unpack(
-        baseFlagsSlider:clone():addAll(data.flags or {}, true)
-    ))
-    val4 = ui_imgui.SliderFloat("##" .. id, val2, min, max, data.formatRender, val3)
+    val3 = sliderBaseFlags
+    if data.flags then
+        for i = 1, #data.flags do
+            val3 = Flags(val3, data.flags[i])
+        end
+    end
+    scratchFloat[0] = value
+    val4 = ui_imgui.SliderFloat(HiddenId(id), scratchFloat, min, max, val6, val3)
 
     PopStyleColor(6)
 
     val5 = nil
     if val4 and not data.disabled then
-        val5 = math.round(val2[0], data.precision or 3)
+        val5 = math.round(scratchFloat[0], data.precision or 3)
     end
 
     return val5 ~= value and val5 or nil
@@ -1309,12 +1382,17 @@ SliderFloatPrecision = function(id, value, min, max, data)
     return val1 ~= value and val1 or nil
 end
 
+-- BeamNG 0.39 no longer defines the ImVec2Zero / ImVec2One constants on ui_imgui (they are
+-- still referenced by some stock editor scripts, but nothing assigns them anymore), so the UV
+-- corners are built once here instead of resolving to nil at every call. Tint/border colors
+-- are constant too and were previously rebuilt through ImColorByRGB on every call.
+local IMAGE_UV_MIN = ui_imgui.ImVec2(0, 0)
+local IMAGE_UV_MAX = ui_imgui.ImVec2(1, 1)
+local IMAGE_TINT = ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
+local IMAGE_BORDER = ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
+
 ---@param texId any
 ---@param size point
 Image = function(texId, size)
-    ui_imgui.Image(texId, size,
-        ui_imgui.ImVec2Zero, ui_imgui.ImVec2One,
-        ui_imgui.ImColorByRGB(255, 255, 255, 255).Value,
-        ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
-    )
+    ui_imgui.Image(texId, size, IMAGE_UV_MIN, IMAGE_UV_MAX, IMAGE_TINT, IMAGE_BORDER)
 end

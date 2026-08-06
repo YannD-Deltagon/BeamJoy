@@ -101,7 +101,8 @@ local function createCylinderMarker(objName, pos, radius, height, color)
     marker:setPosition(pos)
     marker.scale = vec3(radius * 2, radius * 2, height * 2)
     marker.useInstanceRenderData = true
-    setObjectInstanceColor(obj, color)
+    -- was coloring an undefined "obj" global instead of the freshly created marker
+    setObjectInstanceColor(marker, color)
     marker:setField('canSave', 0, "0")
     marker:setField('canSaveDynamicFields', 0, "1")
     marker:registerObject(objName)

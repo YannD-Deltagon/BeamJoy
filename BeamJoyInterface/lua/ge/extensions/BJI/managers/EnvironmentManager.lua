@@ -175,9 +175,11 @@ local function _tryApplySun()
             -- TimePlay is manually done in rendertick (sync purpose)
             ToD.play = false      --M.Data.timePlay
             ToD.dayLength = 84600 --M.Data.dayLength
-            ToD.dayScale = 1      -- M.Data.skyDay.dayScale * 2
-            ToD.nightScale = 1    -- M.Data.skyNight.nightScale * 2
-            ToD.azimuthOverride = M.Data.skyDay.sunAzimuthOverride / 360 * 6.25
+            -- BeamNG 0.39: setTimeOfDay only applies the fields of its own allow-list
+            -- (time, play, dayLength, startTime, latitude, longitude, year, month, day,
+            -- utcOffset, dstRule, celestialProfile - see core/environment.lua:469-482).
+            -- dayScale, nightScale and azimuthOverride are silently ignored now, and the engine
+            -- exposes no replacement, so sun azimuth override is not applicable anymore.
             core_environment.setTimeOfDay(ToD)
             if M.Data.controlWeather then
                 applyFogColor()
@@ -224,24 +226,29 @@ end
 
 local function _tryApplyWeather()
     if M.Data.controlWeather then
-        local core = { core_environment.getFogDensity(), core_environment.getFogDensityOffset(), core_environment
-            .getFogAtmosphereHeight() }
-        local cached = { M.Data.fogDensity, M.Data.fogDensityOffset, M.Data.fogAtmosphereHeight }
+        -- BeamNG 0.39 deprecated fog density offset: get/setFogDensityOffset are now stubs that
+        -- only log a warning (core/environment.lua:1167-1174), the getter always returning nil.
+        -- Keeping it in the comparison would leave a hole in the "core" array, so the tables
+        -- could never match and every setter below would re-run on each tick.
+        local core = { core_environment.getFogDensity(), core_environment.getFogAtmosphereHeight() }
+        local cached = { M.Data.fogDensity, M.Data.fogAtmosphereHeight }
         if not table.compare(core, cached) then
             core_environment.setFogDensity(M.Data.fogDensity)
-            core_environment.setFogDensityOffset(M.Data.fogDensityOffset)
             core_environment.setFogAtmosphereHeight(M.Data.fogAtmosphereHeight)
             applyFogColor()
         end
 
         if M.cachedWorldObjects.CloudLayer then
             local id = M.cachedWorldObjects.CloudLayer:getId()
+            -- BeamNG 0.39 deprecated cloud exposure: get/setCloudExposureByID are now stubs that
+            -- only log a warning (core/environment.lua:1038-1045), the getter always returning
+            -- nil. Same reasoning as fog density offset above: leaving it in would make the
+            -- comparison permanently unequal and re-apply every cloud setting on each tick.
             core = { core_environment.getCloudHeightByID(id), core_environment.getCloudHeightByID(id + 1),
                 core_environment.getCloudCoverByID(id), core_environment.getCloudCoverByID(id + 1),
-                core_environment.getCloudWindByID(id), core_environment.getCloudWindByID(id + 1),
-                core_environment.getCloudExposureByID(id), core_environment.getCloudExposureByID(id + 1) }
+                core_environment.getCloudWindByID(id), core_environment.getCloudWindByID(id + 1) }
             cached = { M.Data.cloudHeight, M.Data.cloudHeightOne, M.Data.cloudCover, M.Data.cloudCoverOne,
-                M.Data.cloudSpeed, M.Data.cloudSpeedOne, M.Data.cloudExposure, M.Data.cloudExposureOne }
+                M.Data.cloudSpeed, M.Data.cloudSpeedOne }
             if not table.compare(core, cached) then
                 core_environment.setCloudHeightByID(id, M.Data.cloudHeight)
                 core_environment.setCloudHeightByID(id + 1, M.Data.cloudHeightOne)
@@ -249,8 +256,6 @@ local function _tryApplyWeather()
                 core_environment.setCloudCoverByID(id + 1, M.Data.cloudCoverOne)
                 core_environment.setCloudWindByID(id, M.Data.cloudSpeed)
                 core_environment.setCloudWindByID(id + 1, M.Data.cloudSpeedOne)
-                core_environment.setCloudExposureByID(id, M.Data.cloudExposure)
-                core_environment.setCloudExposureByID(id + 1, M.Data.cloudExposureOne)
             end
         end
 

@@ -71,6 +71,14 @@ local function stopServerScenarii()
         M.CurrentScenario.forceStop()
         M.CurrentScenario = nil
     end
+    -- hybrid scenarii (TagDuo lobbies, DeliveryMulti) were never stopped here even though
+    -- TagDuoManager.stop documents itself as "stops all lobbies for an incoming server
+    -- scenario"; without this, stale lobbies survived into exclusive scenarios
+    for _, hybrid in pairs(M.Hybrids) do
+        if hybrid.stop then
+            hybrid.stop()
+        end
+    end
 end
 
 --- check if player can spawn a vehicle, depending of his current scenario<br>

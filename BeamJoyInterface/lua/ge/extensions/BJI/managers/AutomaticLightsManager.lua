@@ -50,7 +50,8 @@ local function updateCurrentVeh(gameVehID)
     end
     for vid in pairs(M.nightSwitched) do
         if not BJI_Veh.getVehicleObject(vid) then
-            M.morningSwitched[vid] = nil
+            -- was purging morningSwitched here, leaking nightSwitched entries forever
+            M.nightSwitched[vid] = nil
         end
     end
 end
