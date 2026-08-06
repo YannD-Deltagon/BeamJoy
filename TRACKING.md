@@ -26,6 +26,7 @@ The mod ships as a **double ZIP**:
 | Role | Path | Notes |
 |---|---|---|
 | **Working repo (this Git)** | `E:\compt\Documents\4 - VSC\BeamJoy` | Fork `YannD-Deltagon/BeamJoy` of `my-name-is-samael/BeamJoy` (remote `upstream`). Branch `main`. |
+| **BeamJoy-sandbox (merge target)** | `E:\compt\Documents\4 - VSC\BeamJoy-sandbox` | Official remake by the original author (`my-name-is-samael/BeamJoy-sandbox`, v1.0.4, last commit 2025-12-11 = **pre-0.39**). HTML/Angular UI, sandbox-only scope, **incompatible with classic**. See §12-§13. |
 | **BeamMP client source** | `E:\compt\Documents\4 - VSC\BeamMP` | Reference for multiplayer integration (`MPCoreNetwork`, `MPGameNetwork`, `MPVehicleGE`, mod loading). |
 | **Game install (0.39 source of truth)** | `C:\Program Files (x86)\Steam\steamapps\common\BeamNG.drive` | **v0.39.2.1**, build 20887 (2026-07-31). Game Lua is **unpacked** under `lua\` — use it to verify every API. |
 | **Game user profile** | `C:\Users\compt\AppData\Local\BeamNG\BeamNG.drive\current` | Logs (`beamng.log`), `mods\` (BeamMP.zip lives in `mods\multiplayer\`), settings, cache. |
@@ -619,6 +620,8 @@ These are **not** 0.39 regressions — they exist today in 2.0.8.
 | 2026-08-05 | UI framework investigation (Angular → Vue) | BeamJoy UI is **imgui**, unaffected. All guihooks touchpoints still wired; **B2 downgraded from rewrite to no-op**; **B10 found** (BeamMP chat module moved) |
 | 2026-08-05 | Port applied: B1, B3, B4, B5, B6, B7, B8, B10 + P2, P3 | 7 files changed, +70/−40 |
 | 2026-08-05 | Test server rebuilt by user | BeamMP Server **v3.9.3**, clean `Resources/`; old setup archived in `L:\Server\BeamMP\0.38\` (20 GB, incl. intact `Server/BeamJoyData/db`, 3.3 MB) |
+| 2026-08-06 | V3.0.0 released (commit 0663458, tag v3.0.0, pushed to GitHub) | 22 files, adversarially reviewed |
+| 2026-08-06 | BeamJoy-sandbox mapped (8-agent workflow: 6 subsystems + 47-row feature matrix + 13-check 0.39 audit) | §12-§13 |
 | 2026-08-05 | Deployed ported build to test server | `BeamJoyCore` + `BeamJoyChatHandler` → `Resources/Server/`, `BJI.zip` (885 KB) → `Resources/Client/`. **Fresh database chosen** (user decision) |
 
 ---
@@ -794,7 +797,143 @@ immediately).
 
 `BJI.VERSION` and `BJCVERSION`: **2.0.8 → 3.0.0**. `dist/` gitignored.
 
-## 11. Phase 2 candidates (parking lot)
+## 12. BeamJoy-sandbox — architecture map (2026-08-06)
+
+> The official remake by the original author. **This is the merge target**: keep its new
+> interface and architecture, bring classic BeamJoy's features onto it.
+> v1.0.4 · 101 Lua files (vs 241 classic) · sandbox scope only (no scenarios).
+> Structure: `BeamJoyClient` / `BeamJoyServer` / `BeamJoyServerHooks` (+ `assets`).
+
+### 12.1 Client — module system (the big structural shift)
+
+- **1 file = 1 real BeamNG extension.** No directory scanning, no manager registry, no `BJI`
+  namespace table. `modScript.lua` loads `beamjoy_main` → `lua/ge/extensions/beamjoy/main.lua`,
+  whose `M.dependencies` array **declares** every module (`beamjoy_cache`, `beamjoy_vehicles`,
+  `beamjoy_communications_ui`, …). BeamNG's own extension manager resolves order and exposes
+  each as a global (`beamjoy_context`, `beamjoy_vehicles`…). Path convention:
+  `beamjoy/communications/ui.lua` → `beamjoy_communications_ui`.
+- **Custom events ride `extensions.hook`** — no bespoke pub/sub: `onBJClientReady` (world
+  ready + fps>5), `onSlowUpdate` (~250 ms from onPreRender), `onServerTick`. A module opts in
+  by defining the same-named method. (Classic's BJI_Events bus disappears.)
+- **Context**: `beamjoy_context.get()` = throttled memoized accessor (100 ms buckets) building
+  `{now, camera, self, players, mpVeh}` — the classic `TickContext` equivalent.
+- **Cache sync is decentralized**: the server pushes one batched `sendCache` event; each domain
+  module registers its own handler and picks its slice (`caches.config`, `caches.langs`…).
+  Deltas ride separate named events (`updatePlayer`, `updateDBPlayer`…). Push-on-change —
+  **no hash-driven pull** like classic's 26-cache system.
+- Shared helpers live in flat `lua/` (`NG.lua`, `mp.lua`, `imgui_builders.lua`, `bjColor`,
+  Log*/UUID/Table patches) pulled by `loadDefaults.lua` (first dependency).
+
+### 12.2 Client ↔ server protocol
+
+Nearly identical in mechanics to classic, renamed: 2 wire events **`BJ_Event`**
+(`{id, key, parts}`) + **`BJ_DataEvent`** (`{id, part, data}`), same 20 000-char chunking,
+same JSON + numeric-string-key normalization, same 30 s reassembly timeout, same
+`TriggerServerEvent`/`AddEventHandler` transport. Addressing is **key-based** with a
+multi-handler registry (`addHandler`/`addOneUseHandler` + auto-expiry) instead of classic's
+controller.endpoint dispatch. **The protocols are conceptually reconcilable; classic features
+re-implement naturally on the sandbox's key-based dispatch.**
+
+### 12.3 Client — HTML/Angular UI (the headline)
+
+- **Load path is official & alive in 0.39**: the game's `ui/entrypoints/main/angularModules.js`
+  auto-imports `/ui/modModules/<name>/<name>.js` and adds them to `BeamNG.ui` requires
+  **before** `angular.bootstrap` — Angular is now *hosted inside Vue* but fully operational,
+  with per-module error isolation. Verified against 0.39.2.1.
+- `beamjoy.js` declares its own AngularJS 1.x module, serially `await import()`s directives →
+  store → component library → windows (load order *is* the module system, no bundler), then
+  bootstraps a **separate Angular root** (`<beamjoy>` prepended to body) alongside the game's.
+- **State**: single `beamjoyStore` service; sub-namespaces are ES modules mutated directly;
+  inbound Lua events arrive via `guihooks.trigger("BJEvent", {event, payload})` →
+  `$rootScope.$on` → store method named after the event + re-broadcast. Outbound:
+  `beamjoyStore.send()` → `bngApi.engineLua('beamjoy_communications_ui.dispatch(...)')`.
+- **Window system is a clever hybrid**: `bj-window` is pure Angular chrome; **placement,
+  resize, drag and persistence are delegated to BeamNG's native `ui_apps` widget grid** via 3
+  phantom apps (`ui/modules/apps/BeamJoy-Main|HUD|Config`, empty Angular directives). Lua reads
+  `ui_apps.getAvailableLayouts()` and pushes CSS `calc()` positions to JS
+  (`BJSendAppsSizesAndPositions`). → BeamNG's own layout save/load does the persistence.
+- A small **imgui layer remains client-side** (`beamjoy/imgui/`: manager, menu (F4 top bar),
+  style, icon, debug) — verified OK against the 0.39 binding.
+
+### 12.4 Server
+
+From-scratch rewrite keeping the author's idioms: `BeamJoyServer.lua` `onInit` → version/build
+check (BeamMP ≥ 3.9.0), write-permission probe, `loadExtensions()` walking a flat dependency
+list (utils → dao → services → communications) into `_G[name]`; synthetic
+`extensions.hook`/`hookWithReturn` (pcall-isolated; WithReturn stops at first non-nil — used
+for auth/spawn gating); `onPreInit` then `onInit` lifecycle; native BeamMP hooks + custom
+`onBJSChatMessage`/`onBJSConsoleInput` + timers `BJSUpdate` (100 ms) / `BJSSlowUpdate` (1 s).
+**`BeamJoyServerHooks`** = same BeamMP issue #435 chat/console workaround as classic's
+ChatHandler. **DAO** is near line-for-line classic (`BeamJoyData/db`, atomic `.tmp`+rename,
+same layout; `players/<name>.json`, `activities/<map>_<type>.json`), plus a `dao_core`
+dual-write into `ServerConfig.toml` via a bundled TOML codec.
+
+### 12.5 Sandbox 0.39/BeamMP-4.22.1 compat audit (13 checks)
+
+The sandbox predates 0.39. Verified against the installed game + BeamMP source:
+
+| Status | Item |
+|---|---|
+| ✅ | Angular layer + `modModules` pipeline fully intact in 0.39 (the big one) |
+| ✅ | Own imgui usage (`beamjoy/imgui/*`), `ui_topBar` concern, MPVehicleGE stubs, `trackNewVeh` (not used), traffic/markerInteraction/recoveryPrompt APIs (not used — thinner Lua layer) |
+| ❌ | `imgui_builders.lua` :1229-1237 `Image()` uses `ui_imgui.ImVec2Zero/One` **unguarded** → same fix as classic B3 |
+| ❌ | `chat.lua` :14 `require("multiplayer.ui.chat")` **unprotected, per message** → module moved to `beammp/ui/chat` → same fix as classic B10; **JS side too**: `override/chat.js` targets `#chat-list`/`addMessage` of the old Angular chat that BeamMP replaced with imgui |
+| ❌ | Loading-screen DOM hack (`beamjoy.js` :1-12, `document.body.children[2]` + literal `"Loading UI..."`) — the 0.39 Vue boot has neither → rewrite against the new boot contract or drop |
+| ❌ | **Phantom-app layout re-fetch triggers** — the 8 `$rootScope` events the window system listens to for app-container layout changes have shifted in the 0.39 Vue shell → needs a design decision (bridge a new signal, or poll `ui_apps` layouts from Lua) |
+| ⚠ | `dayScale`/`nightScale` passthrough to `setTimeOfDay` silently ignored (same engine allow-list as classic B4) → reimplement day/night speed client-side or drop |
+
+## 13. The merge — classic features onto the sandbox architecture
+
+47-row feature matrix built (full data in the workflow output; key conclusions):
+
+**Keep sandbox as-is (already at or above classic parity)** — map switch+labels, moderation,
+whitelist, traffic (server-distributed = deliberate upgrade), pursuit, nametags (superset),
+chat architecture, broadcasts, welcome/intro, vehicle selector (bugfix pass), local storage,
+safe zones / replay / advanced mods handling / context menu / HUD / database UI / core config
+UI (all net-new), cache protocol, DAO architecture.
+
+**Port (scenario-independent, good first wins)** — reputation/XP, drift rewards, vote
+kick/map pipeline, chat commands catalog, i18n gap-filling (it/tr), DAO field-typing
+hardening, permission-catalog expansion.
+
+**Port (needs shared building blocks first)** — world markers + bigmap + GPS (**the real
+infrastructure gap**), then gas stations/garages on top; general collisions manager
+(FORCED/DISABLED/GHOSTS as a superset of safe-zone ghosting); respawn strategies hybrid.
+
+**The huge one — scenario/activity framework (rewrite)**: classic's single-active-scenario
+FSM (exclusive/hybrid/solo semantics) must be redesigned sandbox-idiomatically (a
+`services_scenario` dispatcher server-side + an Angular activity-state service + HUD/window
+routing client-side). **Every scenario port depends on it**: races solo/multi (+ editor =
+from-scratch Angular waypoint/gizmo UI, `huge`), hunter, infected, derby, speed, tag duo,
+deliveries ×3, bus missions, then tournament as a scoring overlay, votes-scenario last.
+
+**Theme editor**: drop/rewrite as CSS — the HTML UI is natively themeable.
+
+### 13.1 Data migration (classic BeamJoyData → sandbox)
+
+Same flat-JSON DAO + atomic writes on both sides ⇒ **a one-time migration script is
+realistic**, not a drop-in copy: `groups.json` classic = name-keyed map with sparse numeric
+levels (0/2/5/7/100) vs sandbox = **ordered array where position = level** (+ new
+`nameColor`/`textColor`) → flatten order-preserving + backfill colors;
+`players/<name>.json`: classic `reputation`/`stats` have **no sandbox counterpart yet** →
+carry them through the migrator anyway (the reputation port will need them); permission
+catalog needs remapping.
+
+### 13.2 Recommended phasing
+
+| Phase | Content | Size |
+|---|---|---|
+| **0** | Sandbox 0.39 port (§12.5 fixes — reuse classic's B3/B10 solutions) + data migration script | small |
+| **1** | Quick wins: reputation/XP, drift rewards, votes kick/map, chat commands, i18n, hardening | small-medium |
+| **2** | Shared building blocks: markers/GPS/bigmap layer → stations/garages, collisions manager | large |
+| **3** | **Scenario/activity framework** (server dispatcher + Angular activity UI) — own design review before coding | huge |
+| **4** | Scenarios one by one on top: speed → tag duo → races (+editor) → hunter/infected → derby → deliveries → bus → tournament + votes-scenario | large × N |
+
+Open strategic question for the user: which repo hosts the merge (fork of sandbox? new repo?),
+and whether classic V3.0 keeps receiving fixes during the merge (recommended: yes, it is the
+only version players can run until merge Phase 4 delivers scenarios).
+
+## 14. Phase 2 candidates (parking lot)
 
 *(collect improvement ideas here — do not implement them in the stabilization phase)*
 
