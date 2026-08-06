@@ -947,27 +947,43 @@ only version players can run until merge Phase 4 delivers scenarios).
 | 2026-08-06 | **Phase 0 — 0.39/BeamMP 4.22.1 port of the base**: imgui `Image()` constants; chat Lua adapter → `beammp_ui_chat.addMessage` with caret color quantization; chat JS override reduced to a history service (old HTML chat globals gone); loading-screen rebrand on `.ui-boot-title`; `onBeamMPServerLeave` aliases ×5 (**found beyond the audit**: the sandbox used the renamed `onServerLeave` hook everywhere); `onLayoutsChanged` hook dead in 0.39 → throttled layout-signature poll; day/night asymmetric speed re-implemented via per-phase `dayLength` (engine dropped `dayScale`/`nightScale`) |
 | 2026-08-06 | **Data migration tool** `tools/migrate_classic_data.py` — groups (sparse levels → ordered array, `none`→`default`, chat colors backfilled) + players (`beammp`→`beammpID`, reputation/stats preserved under `data.classic`). **Tested on the archived production db: 7 groups + 77 players migrated cleanly.** |
 
-### 15.2 Next: the activity framework (design direction)
+### 15.2 Activity framework — SHIPPED (2026-08-06)
 
-The extensibility requirement translates to: **adding a scenario = dropping in one server
-file + one client file (+ optional Angular window), zero core edits.**
+The extensibility goal is met: **adding a game mode = one server file
+(`services/activities/<key>.lua`) + one client file (`activity/activities/<key>.lua`),
+auto-discovered, zero core edits** — contract in `docs/ACTIVITIES.md`.
 
-- **Server** — `services/activities.lua` dispatcher: registers activity modules by
-  declaration (each exposes `type` = `exclusive|hybrid|solo`, `minPlayers`, lifecycle
-  `canStart/onStart/onPlayerJoin/onPlayerReady/onEvent/onPlayerLeave/onStop`, and a
-  serializable `state`). The dispatcher owns the exclusive-slot rule, participant tracking,
-  disconnect cleanup, vote integration, and pushes state via the existing `sendCache` /
-  named-events protocol under an `activities` cache key.
-- **Client** — `beamjoy/activity/` (folder already exists in the sandbox with its manager):
-  extend it into the mirror registry: modules declare game-facing policy (`canReset`,
-  respawn strategy, restrictions, collisions mode, nametag rules — the classic scenario
-  contract) + `onServerState(state)`; the manager enforces the single-active rule and
-  routes `onSlowUpdate`/vehicle hooks.
-- **UI** — one generic `activity` Angular window driven by a descriptor (title, phases,
-  countdown, participant list, action buttons) + optional per-activity components; HUD slots
-  in BeamJoy-HUD for timers/counters.
-- **Proof**: port **Speed** first (simplest exclusive scenario), then walk §13.2 Phase 4
-  order. Scenario data migration ships with the framework.
+- **Server dispatcher** `services/activities.lua`: exclusive/hybrid types, slot rule,
+  join/leave/ready/disconnect plumbing, `player.activity` bookkeeping (the field the sandbox
+  had reserved), map-change cancellation, state broadcast (`activityState` cache slice),
+  generic `activityEvent` gameplay channel, `StartActivity` permission (default mod).
+- **Client framework** `activity/framework.lua`: mirror registry, transition routing
+  (onJoin/onStateUpdate/onLeave), restrictions bridge on the existing input-filter system,
+  UI descriptor push + actions bridge, `sendEvent()`.
+- **Generic Angular activity window**: lobby/participants/ready/eliminated/positions/details
+  + join/ready/leave/stop buttons — simple activities need zero UI work. Phantom app
+  `BeamJoy-Activity` for native positioning. i18n keys added (en, fr).
+- **Speed game** ported as proof (~150 lines total both sides).
+
+**Adversarially reviewed (3 lenses + refutation, 14 confirmed findings, all fixed).** The
+highlight: a **critical pre-existing flaw in the sandbox's `utils/jsonOld.lua`** — string
+keys that look numeric (a player named "999999999") were misclassified as array indices,
+producing a `Range(1, 999999999)` allocation per broadcast (server OOM/DoS) and silently
+dropping the data. Fixed at the root (actual-number keys only) AND defended in depth
+(participants travel as arrays of records, never name-keyed maps). Other fixes: roster
+freeze once results are final, participant entry passed to `onPlayerLeave` before removal,
+pcall-protected module callbacks everywhere, hybrid UI routing, own-vehicle-only speed
+check, HUD clear on empty message, i18n throughout.
+
+### 15.3 Next steps
+
+1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).
+2. Start-activity entry points: menu/chat-command wiring, then the votes port on top.
+3. Walk the scenario ports on the rail: tag duo (hybrid proof) → races (+ per-map data via
+   `dao_activity` + the Angular waypoint editor, the big UI piece) → hunter/infected →
+   derby → deliveries → bus → tournament overlay.
+4. Quick wins in parallel: reputation/XP (reads `data.classic` from migrated players),
+   drift rewards, chat commands catalog.
 
 ## 16. Phase 2 candidates (parking lot)
 

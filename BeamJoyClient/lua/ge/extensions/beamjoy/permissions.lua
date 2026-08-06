@@ -22,6 +22,7 @@ BJ_PERMISSIONS = {
     SetPermissions = "SetPermissions",
     SetCore = "SetCore",
     SetCEN = "SetCEN",
+    StartActivity = "StartActivity",
 }
 
 local M = {

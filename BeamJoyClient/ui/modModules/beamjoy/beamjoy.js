@@ -42,6 +42,7 @@ await import(`/ui/modModules/beamjoy/cmps/sortable/app.js`);
 await import(`/ui/modModules/beamjoy/windows/hud/app.js`);
 await import(`/ui/modModules/beamjoy/windows/main/app.js`);
 await import(`/ui/modModules/beamjoy/windows/config/app.js`);
+await import(`/ui/modModules/beamjoy/windows/activity/app.js`);
 
 beamjoyModule.component("beamjoy", {
     template: ``,
@@ -62,6 +63,7 @@ beamjoyModule.component("beamjoy", {
                         <bj-hud></bj-hud>
                         <bj-main></bj-main>
                         <bj-config></bj-config>
+                        <bj-activity></bj-activity>
                     `);
                 $compile(el)($rootScope);
                 angular.element(wrapper).append(el);

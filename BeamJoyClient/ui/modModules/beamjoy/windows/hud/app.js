@@ -28,6 +28,11 @@ angular.module("beamjoy").component("bjHud", {
                 $timeout.cancel(this.textData.process);
                 this.textData.process = null;
             }
+            // empty/absent message = explicit clear (used by activities on leave/stop)
+            if (!textData || !textData.message) {
+                this.textData = {};
+                return;
+            }
             if (
                 textData.message &&
                 textData.message !== this.textData.message

@@ -103,15 +103,18 @@ local function isJsonArray(obj)
     end
     local max = 0
     for k in pairs(obj) do
-        local numK = tonumber(k)
-        if not numK or math.round(numK) ~= numK then
+        -- keys must be ACTUAL Lua numbers: a string key like "42" (e.g. a table keyed by a
+        -- purely-numeric player name) must serialize as an object, not be misread as an
+        -- array index - stringify would otherwise build a Range(1, 42...) of nulls, dropping
+        -- the real data and allocating unboundedly for large numeric-looking keys
+        if type(k) ~= "number" or math.round(k) ~= k then
             return false
         end
-        if numK < 1 then
+        if k < 1 then
             return false
         end
-        if numK > max then
-            max = numK
+        if k > max then
+            max = k
         end
     end
     return true, max

@@ -22,6 +22,7 @@ BJ_PERMISSIONS = {
     SetPermissions = "SetPermissions",
     SetCore = "SetCore",
     SetCEN = "SetCEN",
+    StartActivity = "StartActivity",
 }
 
 local M = {
@@ -45,6 +46,7 @@ local M = {
         FreezePlayers = "mod",
         EnginePlayers = "mod",
         SwitchMap = "mod",
+        StartActivity = "mod",
 
         SetConfig = "admin",
         Ban = "admin",

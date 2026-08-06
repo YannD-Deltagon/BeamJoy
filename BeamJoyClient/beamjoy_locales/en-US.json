@@ -268,5 +268,19 @@
 
     // PURSUIT
     "beamjoy.pursuit.arrestIn": "Arrest in {time}",
-    "beamjoy.pursuit.fugitiveTag": "FUGITIVE"
+    "beamjoy.pursuit.fugitiveTag": "FUGITIVE",
+
+    // ACTIVITIES
+    "beamjoy.window.activity": "BeamJoy Activity",
+    "beamjoy.activity.join": "Join",
+    "beamjoy.activity.ready": "Ready",
+    "beamjoy.activity.leave": "Leave",
+    "beamjoy.activity.stop": "Stop (staff)",
+    "beamjoy.activity.joinDenied": "Cannot join this activity",
+    "beamjoy.activity.speed.title": "Speed Game",
+    "beamjoy.activity.speed.minSpeedLabel": "Minimum speed",
+    "beamjoy.activity.speed.winnerLabel": "Winner",
+    "beamjoy.activity.speed.eliminated": "ELIMINATED",
+    "beamjoy.activity.speed.minSpeed": "Min: {speed}",
+    "beamjoy.activity.speed.speedUp": "SPEED UP! {seconds}s (min {speed})"
 }

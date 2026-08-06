@@ -1,0 +1,19 @@
+{
+    "domElement": "<span></span>",
+    "name": "beamjoy.window.activity",
+    "types": ["ui.apps.categories.multiplayer"],
+    "css": {
+        "top": "35vh",
+        "left": ".5vw",
+        "width": "18vw",
+        "min-width": "12vw",
+        "max-width": "40vw",
+        "height": "35vh",
+        "min-height": "20vh",
+        "max-height": "70vh"
+    },
+    "description": "Activity Window position for BeamJoy UI (races, speed game, ...)",
+    "author": "TontonSamael",
+    "version": "1.0",
+    "directive": "beamjoy-activity"
+}

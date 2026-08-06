@@ -23,6 +23,13 @@ local M = {
             defaultWidth = "34.5vw",
             defaultHeight = "60vh",
         },
+        {
+            name = "beamjoy-activity",
+            defaultTop = "35vh",
+            defaultLeft = ".5vw",
+            defaultWidth = "18vw",
+            defaultHeight = "35vh",
+        },
     },
 
     windowStates = {

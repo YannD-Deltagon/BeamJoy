@@ -31,7 +31,8 @@ local M = {
         "beamjoy_vehicles", "beamjoy_imgui_manager", "beamjoy_chat", "beamjoy_inputs",
         "beamjoy_restrictions", "beamjoy_config", "beamjoy_permissions", "beamjoy_groups",
         "beamjoy_players", "beamjoy_nametags", "beamjoy_contextMenu", "beamjoy_traffic",
-        "beamjoy_activity_manager", "beamjoy_ui_activityEditor", "beamjoy_environment",
+        "beamjoy_activity_manager", "beamjoy_activity_framework",
+        "beamjoy_ui_activityEditor", "beamjoy_environment",
         "beamjoy_broadcast", "beamjoy_maps", "beamjoy_automaticLights", "beamjoy_pursuit" },
 
     world_ready = false,

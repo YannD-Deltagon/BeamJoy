@@ -252,5 +252,19 @@
     "beamjoy.broadcasts.stop.countdownBroadcast": "Le serveur s'arrêtera dans {seconds} secondes",
 
     "beamjoy.pursuit.arrestIn": "Arrestation dans {time}",
-    "beamjoy.pursuit.fugitiveTag": "FUGITIF"
+    "beamjoy.pursuit.fugitiveTag": "FUGITIF",
+
+    // ACTIVITES
+    "beamjoy.window.activity": "Activité BeamJoy",
+    "beamjoy.activity.join": "Rejoindre",
+    "beamjoy.activity.ready": "Prêt",
+    "beamjoy.activity.leave": "Quitter",
+    "beamjoy.activity.stop": "Stop (staff)",
+    "beamjoy.activity.joinDenied": "Impossible de rejoindre cette activité",
+    "beamjoy.activity.speed.title": "Jeu de Vitesse",
+    "beamjoy.activity.speed.minSpeedLabel": "Vitesse minimum",
+    "beamjoy.activity.speed.winnerLabel": "Vainqueur",
+    "beamjoy.activity.speed.eliminated": "ÉLIMINÉ",
+    "beamjoy.activity.speed.minSpeed": "Min : {speed}",
+    "beamjoy.activity.speed.speedUp": "ACCÉLÈRE ! {seconds}s (min {speed})"
 }
