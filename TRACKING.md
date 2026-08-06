@@ -933,7 +933,43 @@ Open strategic question for the user: which repo hosts the merge (fork of sandbo
 and whether classic V3.0 keeps receiving fixes during the merge (recommended: yes, it is the
 only version players can run until merge Phase 4 delivers scenarios).
 
-## 14. Phase 2 candidates (parking lot)
+## 15. V4 — the merge (branch `v4`)
+
+> **Goal (user, 2026-08-06): best of both worlds, all features, one all-in-one mod, with a
+> simple way to add scenarios / event types.** Base = sandbox architecture; classic features
+> ported on top. Classic V3.0 stays maintained on `main`.
+
+### 15.1 Done
+
+| Date | Step |
+|---|---|
+| 2026-08-06 | `v4` branch created; sandbox v1.0.4 imported as base (GPLv3, same author) |
+| 2026-08-06 | **Phase 0 — 0.39/BeamMP 4.22.1 port of the base**: imgui `Image()` constants; chat Lua adapter → `beammp_ui_chat.addMessage` with caret color quantization; chat JS override reduced to a history service (old HTML chat globals gone); loading-screen rebrand on `.ui-boot-title`; `onBeamMPServerLeave` aliases ×5 (**found beyond the audit**: the sandbox used the renamed `onServerLeave` hook everywhere); `onLayoutsChanged` hook dead in 0.39 → throttled layout-signature poll; day/night asymmetric speed re-implemented via per-phase `dayLength` (engine dropped `dayScale`/`nightScale`) |
+| 2026-08-06 | **Data migration tool** `tools/migrate_classic_data.py` — groups (sparse levels → ordered array, `none`→`default`, chat colors backfilled) + players (`beammp`→`beammpID`, reputation/stats preserved under `data.classic`). **Tested on the archived production db: 7 groups + 77 players migrated cleanly.** |
+
+### 15.2 Next: the activity framework (design direction)
+
+The extensibility requirement translates to: **adding a scenario = dropping in one server
+file + one client file (+ optional Angular window), zero core edits.**
+
+- **Server** — `services/activities.lua` dispatcher: registers activity modules by
+  declaration (each exposes `type` = `exclusive|hybrid|solo`, `minPlayers`, lifecycle
+  `canStart/onStart/onPlayerJoin/onPlayerReady/onEvent/onPlayerLeave/onStop`, and a
+  serializable `state`). The dispatcher owns the exclusive-slot rule, participant tracking,
+  disconnect cleanup, vote integration, and pushes state via the existing `sendCache` /
+  named-events protocol under an `activities` cache key.
+- **Client** — `beamjoy/activity/` (folder already exists in the sandbox with its manager):
+  extend it into the mirror registry: modules declare game-facing policy (`canReset`,
+  respawn strategy, restrictions, collisions mode, nametag rules — the classic scenario
+  contract) + `onServerState(state)`; the manager enforces the single-active rule and
+  routes `onSlowUpdate`/vehicle hooks.
+- **UI** — one generic `activity` Angular window driven by a descriptor (title, phases,
+  countdown, participant list, action buttons) + optional per-activity components; HUD slots
+  in BeamJoy-HUD for timers/counters.
+- **Proof**: port **Speed** first (simplest exclusive scenario), then walk §13.2 Phase 4
+  order. Scenario data migration ships with the framework.
+
+## 16. Phase 2 candidates (parking lot)
 
 *(collect improvement ideas here — do not implement them in the stabilization phase)*
 
