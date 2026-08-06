@@ -9,48 +9,66 @@ local M = {
 
 }
 
+-- BeamMP 4.22.1 (BeamNG 0.39) replaced its HTML chat with an imgui window and relocated the
+-- module from "multiplayer/ui/chat" to "beammp/ui/chat". The old integration pushed rich
+-- colored segments straight into the private chatMessages model; the new module's documented
+-- external access point is beammp_ui_chat.addMessage(username, message, id, color), whose
+-- message string carries BeamMP caret color codes (^0-^f) parsed into colored segments.
+-- Resolution is lazy and protected so a missing module (older BeamMP) degrades to the HTML
+-- chat only instead of erroring on every message.
+local mpChatModule
+---@return table? chat module exposing addMessage(username, message, id, color)
+local function getMPChat()
+    if mpChatModule == nil then
+        local ok, mod = pcall(require, "beammp.ui.chat")
+        mpChatModule = (ok and type(mod) == "table") and mod or false
+    end
+    return mpChatModule or nil
+end
+
+-- BeamMP caret color palette (chat.lua colorCodes), used to quantize the mod's RGB colors
+local CARET_COLORS = {
+    ["0"] = { 0, 0, 0 }, ["1"] = { 0, 0, .667 }, ["2"] = { 0, .667, 0 }, ["3"] = { 0, .667, .667 },
+    ["4"] = { .667, 0, 0 }, ["5"] = { .667, 0, .667 }, ["6"] = { 1, .667, 0 }, ["7"] = { .667, .667, .667 },
+    ["8"] = { .333, .333, .333 }, ["9"] = { .333, .333, 1 }, ["a"] = { .333, 1, .333 }, ["b"] = { .333, 1, 1 },
+    ["c"] = { 1, .333, .333 }, ["d"] = { 1, .333, 1 }, ["e"] = { 1, 1, .333 }, ["f"] = { 1, 1, 1 },
+}
+---@param rgb number[]? index 1-3, value 0-1
+---@return string caret code ("^X")
+local function nearestCaretCode(rgb)
+    if not rgb then return "^f" end
+    local best, bestDist = "f", math.huge
+    for code, c in pairs(CARET_COLORS) do
+        local d = (c[1] - (rgb[1] or 1)) ^ 2 + (c[2] - (rgb[2] or 1)) ^ 2 + (c[3] - (rgb[3] or 1)) ^ 2
+        if d < bestDist then
+            best, bestDist = code, d
+        end
+    end
+    return "^" .. best
+end
+
+-- transparent username color: with color set, the renderer prints the (empty) username
+-- without the ": " suffix, giving full control over the message content
+local TRANSPARENT = { [0] = 0, [1] = 0, [2] = 0, [3] = 0 }
+
 ---@param payload {sender: {text: string, color: number[], tag: string?, tagColor: number[]}?, message: {text: string, color: number[]}}
 local function addImguiMessage(payload)
-    local mpChat = require("multiplayer.ui.chat")
-    local parts = {}
+    local mpChat = getMPChat()
+    if not mpChat or not mpChat.addMessage then return end
 
+    local str = ""
     if payload.sender then
+        local defaultCode = nearestCaretCode(M.defaultColor)
         if payload.sender.tag then
-            local defaultColor = BJColor():fromArray(M.defaultColor):vec4()
-            table.insert(parts, {
-                text = "[",
-                color = defaultColor,
-            })
-            table.insert(parts, {
-                text = payload.sender.tag,
-                color = BJColor():fromArray(payload.sender.tagColor):vec4(),
-            })
-            table.insert(parts, {
-                text = "]",
-                color = defaultColor,
-            })
+            str = str .. defaultCode .. "[" .. nearestCaretCode(payload.sender.tagColor) ..
+                payload.sender.tag .. defaultCode .. "]"
         end
-        table.insert(parts, {
-            text = payload.sender.text .. ": ",
-            color = BJColor():fromArray(payload.sender.color):vec4(),
-        })
+        str = str .. nearestCaretCode(payload.sender.color) .. payload.sender.text .. ": "
     end
-    table.insert(parts, {
-        text = payload.message.text,
-        color = BJColor():fromArray(payload.message.color):vec4(),
-    })
+    str = str .. nearestCaretCode(payload.message.color) .. payload.message.text
 
-    table.insert(mpChat.chatMessages, {
-        sentTime = os.time(),
-        id = #mpChat.chatMessages + 1,
-        username = "", -- use color to bypass name + colon
-        color = BJColor(0, 0, 0, 0):asPtr(),
-        message = parts,
-    })
-
-    if UI.settings.window.showOnMessage then UI.bringToFront() end
-    -- autoscroll to last
-    mpChat.newMessageCount = mpChat.newMessageCount + 1
+    -- addMessage also handles show-on-message focus and the unread counter internally
+    mpChat.addMessage("", str, nil, TRANSPARENT)
 end
 
 ---@param senderName string?

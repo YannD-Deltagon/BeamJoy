@@ -82,8 +82,10 @@ M.onPreRender = function(dtReal, dtSim, dtRaw)
     end
 end
 
-M.onServerLeave = function()
+local function onServerLeave()
     extensions.unload("beamjoy_main")
 end
+M.onServerLeave = onServerLeave       -- BeamMP < 4.22
+M.onBeamMPServerLeave = onServerLeave -- BeamMP 4.22.1+ renamed all its hooks with the onBeamMP* prefix
 
 return M

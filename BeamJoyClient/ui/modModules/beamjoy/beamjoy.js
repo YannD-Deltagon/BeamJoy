@@ -1,14 +1,15 @@
-// update Loading screen
+// update Loading screen (cosmetic rebrand)
+// BeamNG 0.39 rebuilt the UI boot screen (Vue shell): the old hardcoded
+// document.body.children[2] + "Loading UI..." DOM no longer exists. The new boot markup
+// (ui/entrypoints/main/index.html) exposes a stable ".ui-boot-title" element instead;
+// everything here is defensive since this is purely decorative.
 (function () {
-    const loadingScreenTitle = document.body.children[2]
-        ? document.body.children[2].children[0]
-        : null;
-    if (
-        loadingScreenTitle &&
-        loadingScreenTitle.innerHTML.includes("Loading UI...")
-    ) {
-        loadingScreenTitle.innerHTML = "Loading BeamJoy...";
-    }
+    try {
+        const bootTitle = document.querySelector(".ui-boot-title");
+        if (bootTitle && bootTitle.textContent.includes("Loading")) {
+            bootTitle.textContent = "Loading BeamJoy...";
+        }
+    } catch (e) { /* decorative only, never block module load */ }
 })();
 
 const beamjoyModule = angular.module("beamjoy", [

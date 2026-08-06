@@ -1,104 +1,27 @@
-const createSpanNode = (text, color, bold) => {
-    const node = document.createElement("span");
-    node.appendChild(document.createTextNode(text));
-    if (color)
-        node.style.color = `rgb(${Math.round(color[0] * 255)}, ${Math.round(
-            color[1] * 255
-        )}, ${Math.round(color[2] * 255)})`;
-    if (bold) node.classList.add("bold");
-    return node;
-};
-
-const generateTimeStr = () => {
-    const now = new Date();
-    let hour = now.getHours();
-    let minute = now.getMinutes();
-    let second = now.getSeconds();
-    if (hour < 10) hour = "0" + hour;
-    if (minute < 10) minute = "0" + minute;
-    if (second < 10) second = "0" + second;
-    return hour + ":" + minute + ":" + second;
-};
-
-const addMessageOverride = (rawMsg, time = generateTimeStr()) => {
-    let payload;
-    try {
-        payload = JSON.parse(rawMsg);
-    } catch (e) {
-        // invalid json, do not print
-        console.warn("Invalid chat message", rawMsg, e);
-        return;
-    }
-
-    // Create the message node
-    const chatMessageNode = document.createElement("li");
-    chatMessageNode.className = "chat-message";
-    fadeNode(chatMessageNode);
-
-    // create node for the timestamp
-    const messageTimestampNode = createSpanNode(time);
-    messageTimestampNode.className = "chat-message-timestamp";
-    chatMessageNode.appendChild(messageTimestampNode);
-
-    if (payload.sender) {
-        if (payload.sender.tag) {
-            chatMessageNode.appendChild(createSpanNode("[", null, true));
-            chatMessageNode.appendChild(
-                createSpanNode(
-                    payload.sender.tag,
-                    payload.sender.tagColor,
-                    true
-                )
-            );
-            chatMessageNode.appendChild(createSpanNode("]", null, true));
-        }
-        chatMessageNode.appendChild(
-            createSpanNode(
-                payload.sender.text + ": ",
-                payload.sender.color,
-                true
-            )
-        );
-    }
-    chatMessageNode.appendChild(
-        createSpanNode(payload.message.text, payload.message.color)
-    );
-
-    // create text for the message itself, add it to chat message list
-    const chatList = document.getElementById("chat-list");
-    chatList.appendChild(chatMessageNode);
-    // Delete oldest chat message if more than 70 messages exist
-    if (chatList.children.length > 70) {
-        chatList.removeChild(chatList.children[0]);
-    }
-    scrollToLastMessage();
-};
-
+// BeamNG 0.39 / BeamMP 4.22.1: BeamMP replaced its HTML chat overlay with an imgui window.
+// The globals this override used to build on (addMessage, storeChatMessage, fadeNode,
+// scrollToLastMessage) and the #chat-list DOM node no longer exist. Colored chat messages now
+// reach the imgui chat window from Lua (beamjoy/chat.lua addImguiMessage, caret color codes),
+// so this service is kept only as a stable extension point for a future BeamJoy-owned HTML
+// chat window; it deliberately does no DOM work anymore.
 angular.module("beamjoy").service("bjChat", function ($rootScope) {
-    const baseFunctions = {};
-
-    new Promise((r) => {
-        let process;
-        process = setInterval(() => {
-            if (addMessage) {
-                clearInterval(process);
-                r();
-            }
-        }, 100);
-    }).then(() => {
-        baseFunctions.addMessage = addMessage;
-        addMessage = addMessageOverride;
-    });
+    // messages kept in memory for any future BeamJoy chat UI (payload = JSON string
+    // {sender?: {text, color, tag?, tagColor?}, message: {text, color}})
+    const history = [];
+    const HISTORY_LIMIT = 70;
 
     $rootScope.$on("BJChat", (_, message) => {
-        const time = generateTimeStr();
-        storeChatMessage({ time, message: message });
-        addMessageOverride(message, time);
-    });
-    $rootScope.$on("BJUnload", () => {
-        addMessage = baseFunctions.addMessage;
-        if (typeof Storage !== "undefined") {
-            localStorage.setItem("chatMessages", []);
+        try {
+            history.push({ time: Date.now(), payload: JSON.parse(message) });
+            if (history.length > HISTORY_LIMIT) history.shift();
+        } catch (e) {
+            console.warn("Invalid chat message", message, e);
         }
     });
+
+    $rootScope.$on("BJUnload", () => {
+        history.length = 0;
+    });
+
+    this.getHistory = () => history;
 });

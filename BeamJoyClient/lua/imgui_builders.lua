@@ -1226,12 +1226,15 @@ SliderFloatPrecision = function(id, value, min, max, data)
     return val1 ~= value and val1 or nil
 end
 
+-- BeamNG 0.39 no longer defines the ImVec2Zero / ImVec2One constants on ui_imgui, so the UV
+-- corners are built once here; tint/border colors are constant and cached for the same reason
+local IMAGE_UV_MIN = ui_imgui.ImVec2(0, 0)
+local IMAGE_UV_MAX = ui_imgui.ImVec2(1, 1)
+local IMAGE_TINT = ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
+local IMAGE_BORDER = ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
+
 ---@param texId any
 ---@param size point
 Image = function(texId, size)
-    ui_imgui.Image(texId, size,
-        ui_imgui.ImVec2Zero, ui_imgui.ImVec2One,
-        ui_imgui.ImColorByRGB(255, 255, 255, 255).Value,
-        ui_imgui.ImColorByRGB(255, 255, 255, 255).Value
-    )
+    ui_imgui.Image(texId, size, IMAGE_UV_MIN, IMAGE_UV_MAX, IMAGE_TINT, IMAGE_BORDER)
 end

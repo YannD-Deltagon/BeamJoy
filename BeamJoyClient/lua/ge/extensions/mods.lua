@@ -254,7 +254,8 @@ local function retrieveCache(caches)
 end
 
 M.onInit = onInit
-M.onServerLeave = onUnload
+M.onServerLeave = onUnload -- BeamMP < 4.22
+M.onBeamMPServerLeave = onUnload -- BeamMP 4.22.1+ hook rename
 M.onModActivated = onModActivated
 M.onModDeactivated = onModDeactivated
 

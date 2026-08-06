@@ -126,6 +126,47 @@ local function dispatch(key, payload)
     return result
 end
 
+-- BeamNG 0.39 removed the onLayoutsChanged extension hook this module relied on to re-push
+-- window positions when the user moved/resized the phantom apps. Replacement: a throttled
+-- poll (onSlowUpdate) that recomputes a cheap placement signature and only re-sends when it
+-- actually changed. The M.onLayoutsChanged export is kept in case a future game build
+-- reintroduces a layout hook.
+local lastLayoutSignature = nil
+local lastLayoutPollMs = 0
+local LAYOUT_POLL_INTERVAL_MS = 2000
+
+local function computeLayoutSignature()
+    local layout = table.filter(extensions.ui_apps.getAvailableLayouts(), function(l)
+        return l.type == extensions.core_gamestate.state.appLayout
+    end)[1]
+    if not layout then return "" end
+    local sig = {}
+    for _, app in ipairs(M.APP_SIZES) do
+        local existing = table.find(layout.apps or {}, function(el)
+            return el.appName == app.name
+        end)
+        if existing then
+            table.insert(sig, string.format("%s:%s,%s,%s,%s,%s,%s", app.name,
+                tostring(existing.placement.top), tostring(existing.placement.bottom),
+                tostring(existing.placement.left), tostring(existing.placement.right),
+                tostring(existing.placement.width), tostring(existing.placement.height)))
+        end
+    end
+    return table.concat(sig, "|")
+end
+
+local function onSlowUpdate(ctxt)
+    if ctxt.now - lastLayoutPollMs < LAYOUT_POLL_INTERVAL_MS then return end
+    lastLayoutPollMs = ctxt.now
+    local ok, sig = pcall(computeLayoutSignature)
+    if ok and sig ~= lastLayoutSignature then
+        if lastLayoutSignature ~= nil then -- skip the initial send, onUIReady handles it
+            M.sendWindowsSizesAndPositions()
+        end
+        lastLayoutSignature = sig
+    end
+end
+
 local function sendWindowsSizesAndPositions()
     local layout = table.filter(extensions.ui_apps.getAvailableLayouts(), function(l)
         return l.type == extensions.core_gamestate.state.appLayout
@@ -296,8 +337,10 @@ end
 
 M.onInit = onInit
 M.onBJClientReady = onBJClientReady
-M.onServerLeave = onServerLeave
-M.onLayoutsChanged = sendWindowsSizesAndPositions
+M.onServerLeave = onServerLeave -- BeamMP < 4.22
+M.onBeamMPServerLeave = onServerLeave -- BeamMP 4.22.1+ renamed all its hooks with the onBeamMP* prefix
+M.onLayoutsChanged = sendWindowsSizesAndPositions -- dead in 0.39, kept for older/future builds
+M.onSlowUpdate = onSlowUpdate                     -- 0.39 replacement: throttled layout-change poll
 M.onBJUpdateSelf = onBJUpdateSelf
 
 M.send = send

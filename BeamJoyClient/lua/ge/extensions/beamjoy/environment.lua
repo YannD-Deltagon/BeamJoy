@@ -190,6 +190,28 @@ local function updateSimSpeed()
     end
 end
 
+-- BeamNG 0.39: setTimeOfDay only applies an allow-listed field set (time, play, dayLength,
+-- startTime, lat/long/date, celestialProfile...); ToD.dayScale/nightScale are silently
+-- ignored, so asymmetric day/night speed can no longer be delegated to the engine. It is
+-- emulated instead: dayLength (still allow-listed) is re-derived per phase, dividing the
+-- base length by the active phase scale. Night range matches the game's ToD convention
+-- (time in [0.245, 0.76] = night).
+local NIGHT_RANGE_MIN, NIGHT_RANGE_MAX = .245, .76
+---@param time number 0-1
+---@return boolean
+local function isNightTime(time)
+    return time >= NIGHT_RANGE_MIN and time <= NIGHT_RANGE_MAX
+end
+---@param time number 0-1 current ToD
+---@return number effective engine dayLength for the current phase
+local function getPhaseDayLength(time)
+    local base = tonumber(M.data.dayLength) or 1800
+    local scale = isNightTime(time) and (tonumber(M.data.nightScale) or 2)
+        or (tonumber(M.data.dayScale) or 1)
+    if scale <= 0 then scale = 1 end
+    return base / scale
+end
+
 ---@param forceToD boolean?
 ---@param forceStopTimePlay boolean?
 local function updateToD(forceToD, forceStopTimePlay)
@@ -200,9 +222,7 @@ local function updateToD(forceToD, forceStopTimePlay)
             if not ToD.play or forceToD then
                 ToD.time = tonumber(M.data.ToD) or 0
             end
-            ToD.dayLength = tonumber(M.data.dayLength) or 1800
-            ToD.dayScale = tonumber(M.data.dayScale) or 1
-            ToD.nightScale = tonumber(M.data.nightScale) or 2
+            ToD.dayLength = getPhaseDayLength(tonumber(ToD.time) or 0)
         else
             ToD.dayLength = 1800 -- default
         end
@@ -210,6 +230,24 @@ local function updateToD(forceToD, forceStopTimePlay)
         if forceStopTimePlay then
             ToD.play = false
         end
+        M.baseFunctions.core_environment.setTimeOfDay(ToD)
+    end
+end
+
+-- keeps the emulated per-phase dayLength in sync while the cycle is running (cheap: one
+-- getTimeOfDay read every ~250ms, one setTimeOfDay only when crossing a day/night boundary)
+local lastPhaseWasNight = nil
+local function onSlowUpdate()
+    if not M.data.timeSync or not M.data.dayNightCycle then
+        lastPhaseWasNight = nil
+        return
+    end
+    local ToD = core_environment.getTimeOfDay()
+    if not ToD then return end
+    local night = isNightTime(tonumber(ToD.time) or 0)
+    if night ~= lastPhaseWasNight then
+        lastPhaseWasNight = night
+        ToD.dayLength = getPhaseDayLength(tonumber(ToD.time) or 0)
         M.baseFunctions.core_environment.setTimeOfDay(ToD)
     end
 end
@@ -381,7 +419,9 @@ M.onBeforeRadialOpened = onBeforeRadialOpened
 M.onBJRequestRestrictions = onBJRequestRestrictions
 M.onReplayStarted = onReplayStateChanged
 M.onReplayStopped = onReplayStateChanged
-M.onServerLeave = onServerLeave
+M.onServerLeave = onServerLeave -- BeamMP < 4.22
+M.onBeamMPServerLeave = onServerLeave -- BeamMP 4.22.1+ hook rename
+M.onSlowUpdate = onSlowUpdate -- 0.39 day/night phase-length emulation
 
 M.retrieveCache = retrieveCache
 M.sendEnvToUI = sendEnvToUI
