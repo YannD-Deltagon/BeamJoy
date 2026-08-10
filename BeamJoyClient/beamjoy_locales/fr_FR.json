@@ -254,6 +254,23 @@
     "beamjoy.pursuit.arrestIn": "Arrestation dans {time}",
     "beamjoy.pursuit.fugitiveTag": "FUGITIF",
 
+    // PARAMETRES NAMETAGS (0.39 : les clés ui.options.multiplayer.* du jeu n'existent plus)
+    "beamjoy.window.main.tabs.settings.sections.nametags.hideNameTags": "Masquer les pseudos",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeEnabled": "Estomper les pseudos avec la distance",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeDistance": "Distance d'estompage",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeDistance.tooltip": "Distance à partir de laquelle les pseudos s'estompent",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeInvert": "Inverser l'estompage",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeIn": "Apparition",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeOut": "Disparition",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagDontFullyHide": "Ne jamais masquer complètement",
+    "beamjoy.window.main.tabs.settings.sections.nametags.shortenNametags": "Raccourcir les pseudos",
+    "beamjoy.window.main.tabs.settings.sections.nametags.shortenNametags.tooltip": "Tronquer les pseudos longs à une limite fixe",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nametagCharLimit": "Limite de caractères des pseudos",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nametagCharLimit.tooltip": "Nombre maximum de caractères avant troncature",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagShowDistance": "Afficher la distance sur les pseudos",
+    "beamjoy.window.main.tabs.settings.sections.nametags.showSpectators.tooltip": "Afficher les pseudos des spectateurs",
+    "beamjoy.menu.about.continuedBy": "Continued by Captain Nugget",
+
     // ACTIVITES
     "beamjoy.window.activity": "Activité BeamJoy",
     "beamjoy.activity.join": "Rejoindre",

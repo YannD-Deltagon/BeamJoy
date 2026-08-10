@@ -975,6 +975,44 @@ freeze once results are final, participant entry passed to `onPlayerLeave` befor
 pcall-protected module callbacks everywhere, hybrid UI routing, own-vehicle-only speed
 check, HUD clear on empty message, i18n throughout.
 
+### 15.2b Third-party port integrated: foodcache3 (Captain Nugget) — 2026-08-08
+
+`https://github.com/foodcache3/BeamJoy-sandbox` — an independent, **runtime-tested** 0.39
+port of the sandbox (same v1.0.4 base as our v4). Cloned to
+`E:\compt\Documents\4 - VSC\BeamJoy-sandbox-foodcache` (tracks the fork; also added as git
+remote `foodcache` in this repo for syncing). Their fixes were merged into `v4` with
+attribution, reconciled with our Phase 0:
+
+**Runtime-only discoveries we adopted (static analysis had missed all of these):**
+1. 💥 **The self-bootstrapped Angular app never receives guihooks events on 0.39** — the
+   0.39 loader bootstraps `BeamNG.ui` itself with modModules as dependencies; a separate
+   `angular.bootstrap()` creates a $rootScope disconnected from
+   `window.globalAngularRootScope` that `guihooks.trigger()` broadcasts on. Every
+   Lua→UI event (BJEvent, BJActivityState…) would silently never arrive. Fix: mount via
+   `.run()` with the injected shared $rootScope. **Without this, our whole V4 UI was deaf.**
+2. `ui_apps.getAvailableLayouts()` removed → `ui_appLayouts.getAvailableLayouts()` (applied
+   to both our call sites incl. the layout poll, guarded, with pre-0.39 fallback).
+3. Bare `core_environment` global unavailable at onInit time → `extensions.core_environment`
+   + nil guards (environment.lua, automaticLights.lua).
+4. `camera.lua` dependency-ordering bug → preloadedDependencies.
+5. **0.39 locales pipeline**: `core_locales` reads `/locales/translations/<lang>/*.json`
+   folders (the old flat-file merge was a no-op) → write `beamjoy.json` per language +
+   `core_locales.onFilesChanged()` refresh; `translate()` via `core_locales.translate`
+   instead of `MPTranslate` (imgui F4 menu now shares the web UI's locale data).
+6. Nametag settings referenced dead `ui.options.multiplayer.*` core keys → BeamJoy-owned
+   keys (their en entries taken; **fr translations added by us**).
+
+**Also taken from their v1.2.0:** draggable/resizable `bj-window` (header drag, corner
+resize, per-window localStorage persistence, click-to-front — independent of the App
+Editor; our activity window opted in via `window-id="activity"`), faster UI animations
+(0.5-0.6s → 0.2s), traffic per-player default 5→1 + slider range fix, About credit line.
+
+**Kept ours over theirs:** chat — they stubbed the imgui mirror ("chat moved to Vue");
+our adapter targets BeamMP 4.22.1's actual `beammp/ui/chat` imgui window through its
+documented `addMessage` API and degrades to their behavior if the module is absent.
+**Fixed while taking:** their unicycle-spawn patch had a Lua precedence bug
+(`not model == M.WALKING` is always false) → `model ~= M.WALKING`.
+
 ### 15.3 Next steps
 
 1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).

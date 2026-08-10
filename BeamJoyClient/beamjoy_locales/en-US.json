@@ -270,6 +270,23 @@
     "beamjoy.pursuit.arrestIn": "Arrest in {time}",
     "beamjoy.pursuit.fugitiveTag": "FUGITIVE",
 
+    // NAMETAG SETTINGS (0.39: the ui.options.multiplayer.* core keys no longer exist)
+    "beamjoy.window.main.tabs.settings.sections.nametags.hideNameTags": "Hide nametags",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeEnabled": "Fade nametags with distance",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeDistance": "Nametag fade distance",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeDistance.tooltip": "Distance at which nametags start fading out",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeInvert": "Invert nametag fade",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeIn": "Fade in",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagFadeOut": "Fade out",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagDontFullyHide": "Don't fully hide faded nametags",
+    "beamjoy.window.main.tabs.settings.sections.nametags.shortenNametags": "Shorten nametags",
+    "beamjoy.window.main.tabs.settings.sections.nametags.shortenNametags.tooltip": "Truncate long nametags to a fixed character limit",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nametagCharLimit": "Nametag character limit",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nametagCharLimit.tooltip": "Maximum number of characters shown before truncating",
+    "beamjoy.window.main.tabs.settings.sections.nametags.nameTagShowDistance": "Show nametag distance",
+    "beamjoy.window.main.tabs.settings.sections.nametags.showSpectators.tooltip": "Show nametags for spectating players",
+    "beamjoy.menu.about.continuedBy": "Continued by Captain Nugget",
+
     // ACTIVITIES
     "beamjoy.window.activity": "BeamJoy Activity",
     "beamjoy.activity.join": "Join",

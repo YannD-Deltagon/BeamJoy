@@ -263,7 +263,10 @@ local function onBJRequestCanSpawnVehicle(req, model, config)
         req.state = false
     elseif not M.allVehicleConfigs[model] and
         not M.allTrailerConfigs[model] and
-        not M.allPropConfigs[model] then
+        not M.allPropConfigs[model] and
+        model ~= M.WALKING then -- allow the unicycle (idea from Ludwig Witzman via
+        -- foodcache3; their version had "not model == M.WALKING" which Lua parses as
+        -- "(not model) == M.WALKING", i.e. always false)
         req.state = false
     end
 end

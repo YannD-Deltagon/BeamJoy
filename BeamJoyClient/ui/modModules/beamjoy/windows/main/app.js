@@ -3,7 +3,7 @@ await import(`/ui/modModules/beamjoy/windows/main/settings/app.js`);
 
 angular.module("beamjoy").component("bjMain", {
     templateUrl: "/ui/modModules/beamjoy/windows/main/app.html",
-    controller: function ($rootScope, beamjoyStore) {
+    controller: function ($rootScope, beamjoyStore, beamjoyWindowRect) {
         this.visible = false;
         this.closable = false;
         this.closeWindow = () => {
@@ -14,7 +14,8 @@ angular.module("beamjoy").component("bjMain", {
         $rootScope.$on("BJSendAppsSizesAndPositions", (_, data) => {
             const el = data["beamjoy-main"];
             const dom = document.querySelector("#beamjoy-main");
-            if (el && dom) {
+            // skip the Lua-driven default once the player has manually moved/resized
+            if (el && dom && !beamjoyWindowRect.get("main")) {
                 dom.style.width = el.width;
                 dom.style.height = el.height;
                 dom.style.top = el.top;
@@ -24,9 +25,11 @@ angular.module("beamjoy").component("bjMain", {
         $rootScope.$on("BJUpdateWindowSettings", (_, data) => {
             const el = data["beamjoy-main"];
             if (el) {
-                this.visible = el.visible;
-                this.closable = el.closable;
-                this.onClose = this.closable ? this.closeWindow : undefined;
+                $rootScope.$applyAsync(() => {
+                    this.visible = el.visible;
+                    this.closable = el.closable;
+                    this.onClose = this.closable ? this.closeWindow : undefined;
+                });
             }
         });
 

@@ -1,5 +1,6 @@
 local M = {
-    preloadedDependencies = { "ui_apps", "core_gamestate" },
+    -- ui_appLayouts: BeamNG 0.39 moved getAvailableLayouts() there from ui_apps
+    preloadedDependencies = { "ui_apps", "ui_appLayouts", "core_gamestate" },
     dependencies = {},
     APP_SIZES = {
         {
@@ -142,8 +143,19 @@ local lastLayoutSignature = nil
 local lastLayoutPollMs = 0
 local LAYOUT_POLL_INTERVAL_MS = 2000
 
+local function getAvailableLayouts()
+    -- BeamNG 0.39 removed ui_apps.getAvailableLayouts(); it lives on ui_appLayouts now
+    if extensions.ui_appLayouts and extensions.ui_appLayouts.getAvailableLayouts then
+        return extensions.ui_appLayouts.getAvailableLayouts() or {}
+    end
+    if extensions.ui_apps and extensions.ui_apps.getAvailableLayouts then -- pre-0.39
+        return extensions.ui_apps.getAvailableLayouts() or {}
+    end
+    return {}
+end
+
 local function computeLayoutSignature()
-    local layout = table.filter(extensions.ui_apps.getAvailableLayouts(), function(l)
+    local layout = table.filter(getAvailableLayouts(), function(l)
         return l.type == extensions.core_gamestate.state.appLayout
     end)[1]
     if not layout then return "" end
@@ -175,7 +187,7 @@ local function onSlowUpdate(ctxt)
 end
 
 local function sendWindowsSizesAndPositions()
-    local layout = table.filter(extensions.ui_apps.getAvailableLayouts(), function(l)
+    local layout = table.filter(getAvailableLayouts(), function(l)
         return l.type == extensions.core_gamestate.state.appLayout
     end)[1]
     local res = {}
