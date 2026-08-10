@@ -933,7 +933,11 @@ Open strategic question for the user: which repo hosts the merge (fork of sandbo
 and whether classic V3.0 keeps receiving fixes during the merge (recommended: yes, it is the
 only version players can run until merge Phase 4 delivers scenarios).
 
-## 15. V4 — the merge (branch `v4`)
+## 15. The merge line (branch `0.39-4001-4.0`)
+
+> Branch naming convention (user decision, 2026-08-08): the merge line's branch carries the
+> full version string `<BeamNG>-<build>-<BeamJoy>` — currently **`0.39-4001-4.0`** — and is
+> renamed when the version bumps. "V4" in the sections below refers to this line.
 
 > **Goal (user, 2026-08-06): best of both worlds, all features, one all-in-one mod, with a
 > simple way to add scenarios / event types.** Base = sandbox architecture; classic features
