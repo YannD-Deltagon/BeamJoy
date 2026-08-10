@@ -1013,6 +1013,14 @@ documented `addMessage` API and degrades to their behavior if the module is abse
 **Fixed while taking:** their unicycle-spawn patch had a Lua precedence bug
 (`not model == M.WALKING` is always false) → `model ~= M.WALKING`.
 
+### 15.2c Version scheme (2026-08-08)
+
+**`<BeamNG tested>-<BeamMP tested>-<BeamJoy release>`** — current: **`0.39-4.22.1-1`**
+(build 4001, the V4 line). The first segment is *enforced*: `modScript.lua` now gates on the
+game minor version exactly like BeamMP's own modScript (wrong version → loud toast + no
+load, instead of silent breakage). Bump the last segment for BeamJoy releases on the same
+compat pair; bump the first/second when re-validating against a new game/BeamMP version.
+
 ### 15.3 Next steps
 
 1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).
