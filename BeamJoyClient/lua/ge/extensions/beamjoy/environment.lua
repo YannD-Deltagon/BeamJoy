@@ -216,50 +216,49 @@ local function getPhaseDayLength(time)
     return base / scale
 end
 
+-- updateToD runs every frame (onUpdate), but the engine's setTimeOfDay is NOT free: it
+-- fires onEnvironmentChanged (with a shallowcopy) on every call. The engine write is
+-- therefore gated on a material change: play flag flip, phase-length change (this is what
+-- keeps the per-phase dayLength emulation in sync, incl. day/night boundary crossings),
+-- a forced time set, or a paused-clock drift beyond one in-game minute.
+local ONE_MINUTE = 1 / 24 / 60
 ---@param forceToD boolean?
 ---@param forceStopTimePlay boolean?
 local function updateToD(forceToD, forceStopTimePlay)
     if not extensions.core_environment then return end
     local ToD = extensions.core_environment.getTimeOfDay()
-    if ToD then
-        if M.data.timeSync then
-            ToD.play = M.data.dayNightCycle == true
-            if not ToD.play or forceToD then
-                ToD.time = tonumber(M.data.ToD) or 0
-            end
-            ToD.dayLength = getPhaseDayLength(tonumber(ToD.time) or 0)
-        else
-            ToD.dayLength = 1800 -- default
-        end
-
-        if forceStopTimePlay then
-            ToD.play = false
-        end
-        local setToD = M.baseFunctions.core_environment.setTimeOfDay
-            or extensions.core_environment.setTimeOfDay
-        setToD(ToD)
-    end
-end
-
--- keeps the emulated per-phase dayLength in sync while the cycle is running (cheap: one
--- getTimeOfDay read every ~250ms, one setTimeOfDay only when crossing a day/night boundary)
-local lastPhaseWasNight = nil
-local function onSlowUpdate()
-    if not M.data.timeSync or not M.data.dayNightCycle or
-        not extensions.core_environment then
-        lastPhaseWasNight = nil
-        return
-    end
-    local ToD = extensions.core_environment.getTimeOfDay()
     if not ToD then return end
-    local night = isNightTime(tonumber(ToD.time) or 0)
-    if night ~= lastPhaseWasNight then
-        lastPhaseWasNight = night
-        ToD.dayLength = getPhaseDayLength(tonumber(ToD.time) or 0)
-        local setToD = M.baseFunctions.core_environment.setTimeOfDay
-            or extensions.core_environment.setTimeOfDay
-        setToD(ToD)
+
+    local targetPlay, targetLength
+    local targetTime = nil
+    if M.data.timeSync then
+        targetPlay = M.data.dayNightCycle == true
+        if not targetPlay or forceToD then
+            targetTime = tonumber(M.data.ToD) or 0
+        end
+        targetLength = getPhaseDayLength(tonumber(targetTime or ToD.time) or 0)
+    else
+        targetPlay = ToD.play
+        targetLength = 1800 -- default
     end
+    if forceStopTimePlay then
+        targetPlay = false
+    end
+
+    local changed = (ToD.play ~= targetPlay)
+        or (math.abs((tonumber(ToD.dayLength) or 0) - targetLength) > 0.01)
+        or (forceToD and targetTime ~= nil)
+        or (targetTime ~= nil and math.abs((tonumber(ToD.time) or 0) - targetTime) > ONE_MINUTE)
+    if not changed then return end
+
+    ToD.play = targetPlay
+    ToD.dayLength = targetLength
+    if targetTime ~= nil then
+        ToD.time = targetTime
+    end
+    local setToD = M.baseFunctions.core_environment.setTimeOfDay
+        or extensions.core_environment.setTimeOfDay
+    setToD(ToD)
 end
 
 ---@param resetGravity boolean?
@@ -435,7 +434,6 @@ M.onReplayStarted = onReplayStateChanged
 M.onReplayStopped = onReplayStateChanged
 M.onServerLeave = onServerLeave -- BeamMP < 4.22
 M.onBeamMPServerLeave = onServerLeave -- BeamMP 4.22.1+ hook rename
-M.onSlowUpdate = onSlowUpdate -- 0.39 day/night phase-length emulation
 
 M.retrieveCache = retrieveCache
 M.sendEnvToUI = sendEnvToUI

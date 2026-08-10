@@ -216,7 +216,12 @@ local function saveGroups(ctxt, groupsData)
     if removedGroups:length() > 0 then
         demoteGroupPlayers(removedGroups)
         demotePermissions(removedGroups)
-        removedGroups:forEach(function(k) M.data[k] = nil end)
+        -- M.data is array-shaped and removedGroups holds NAMES: the previous
+        -- "M.data[name] = nil" wrote to a string key that never existed, so removed
+        -- trailing groups survived in memory until the next reboot
+        M.data = table.filter(M.data, function(g)
+            return not removedGroups:includes(g.name)
+        end)
         needUpdate = true
     end
     if needUpdate then

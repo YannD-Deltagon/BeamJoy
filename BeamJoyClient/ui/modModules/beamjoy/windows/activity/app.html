@@ -44,7 +44,7 @@
             <div class="bj-activity-participants">
                 <div
                     class="bj-activity-participant"
-                    ng-repeat="p in $ctrl.data.participants"
+                    ng-repeat="p in $ctrl.data.participants track by p.name"
                     ng-class="{eliminated: p.eliminated}"
                 >
                     <span class="position" ng-if="p.position">#{{p.position}}</span>
@@ -56,7 +56,7 @@
             </div>
 
             <div class="bj-activity-details" ng-if="$ctrl.data.details.length">
-                <div ng-repeat="d in $ctrl.data.details">
+                <div ng-repeat="d in $ctrl.data.details track by d.label">
                     <span>{{d.label}}:</span>
                     <strong>{{d.value}}</strong>
                 </div>

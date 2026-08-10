@@ -1021,6 +1021,47 @@ game minor version exactly like BeamMP's own modScript (wrong version → loud t
 load, instead of silent breakage). Bump the last segment for BeamJoy releases on the same
 compat pair; bump the first/second when re-validating against a new game/BeamMP version.
 
+### 15.2d Full re-analysis (2026-08-08) — audit + opportunity backlog
+
+11-agent workflow: 3 audit lenses over the merged tree (each finding adversarially
+refuted) + a 0.39 game-API exploitation scan + a fluidity scan. **5 confirmed defects,
+all fixed** (+1 refuted):
+
+| Sev | Defect | Fix |
+|---|---|---|
+| major | imgui chat rendered every BeamJoy message **plain white** — BeamMP's `addMessage` only preserves caret colors when `username == "Server"` | username `"Server"` + transparent color (prefix invisible, colors honored) |
+| major | **Pre-existing sandbox bug**: removing a group wrote `M.data[name] = nil` on an array-shaped table → removed trailing groups survived in memory | proper filter by name |
+| major | Activity window lacked the `beamjoyWindowRect` guard → Lua placement sync overwrote a user's dragged position on every state change | same guard as main/config |
+| minor | `dao_activity` `<map>_<type>.json` naming ambiguous for map names with underscores (i.e. nearly all) | one subdirectory per map (`activities/<map>/<type>.json`) |
+| minor | environment: per-frame `updateToD` called the engine's `setTimeOfDay` unconditionally (fires `onEnvironmentChanged` + shallowcopy 60-144×/s) and made our slow-update boundary check redundant | single owned path: engine write gated on material change (play flip, phase-length change, forced/drifted time); redundant onSlowUpdate removed |
+
+Also applied: `track by` on the activity window's ng-repeats.
+
+**Opportunity backlog — 0.39 game APIs to exploit** (evidence-cited by the scan):
+
+| Value/Effort | Opportunity |
+|---|---|
+| high/small | `core_recoveryPrompt.addButton` for activity-specific recovery/radial options |
+| high/small | `gameplay_drift` `onDriftCompleted` hook → drift-rewards quick win |
+| high/large | `gameplay_police` native pursuit FSM as the base for the Hunter port |
+| high/medium | `core_busRouteManager` for the Bus port (stop detection built-in) |
+| medium/small | `core_quickAccess.addEntry` — radial-menu entries per scenario |
+| medium/small | `ui_appLayouts.setLayoutForType` — auto HUD layout per activity |
+| medium/medium | `core_replay` mission auto-recording → post-activity instant replay |
+| medium/trivial | `core_groundMarkers` distance/target APIs beyond bare `setPath` |
+| low | `core_locales.translateWithPrefixFallback`, highscores reuse; **correction: photoMode DOES exist in 0.39** (`ui/photomode/*`) — §5.4 note was a false negative |
+
+**Fluidity backlog** (next perf iteration, evidence-cited):
+
+| Value/Effort | Opportunity |
+|---|---|
+| high/small | nametags: stop re-reading/cloning localStorage colors per nametag per frame |
+| high/medium | nametags: O(n) fresh closures + O(n²) traversal per frame → precomputed lists |
+| high/large | `broadcastState()` full-state per event → delta updates (framework v2) |
+| high/medium | framework: don't push full `BJActivityState` to Angular on every slice; store re-broadcasts every BJEvent globally (digest pressure) |
+| medium | dispatch() linear handler scan per message; parsePayload deep-copy per message; fitText/autoheight digest costs |
+| low/trivial | tx chunking O(n²) tail-slicing; `sendByPermissions` re-stringify per player |
+
 ### 15.3 Next steps
 
 1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).

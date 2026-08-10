@@ -5,13 +5,15 @@
 // Activities only needing lobby/participants/details UI require NO Angular work at all.
 angular.module("beamjoy").component("bjActivity", {
     templateUrl: "/ui/modModules/beamjoy/windows/activity/app.html",
-    controller: function ($rootScope, beamjoyStore, $scope) {
+    controller: function ($rootScope, beamjoyStore, beamjoyWindowRect, $scope) {
         this.data = { visible: false };
 
         $rootScope.$on("BJSendAppsSizesAndPositions", (_, data) => {
             const el = data["beamjoy-activity"];
             const dom = document.querySelector("#beamjoy-activity");
-            if (el && dom) {
+            // skip the Lua-driven default once the player has manually moved/resized
+            // (same guard as the main and config windows)
+            if (el && dom && !beamjoyWindowRect.get("activity")) {
                 dom.style.width = el.width;
                 dom.style.height = el.height;
                 dom.style.top = el.top;

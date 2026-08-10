@@ -67,8 +67,12 @@ local function addImguiMessage(payload)
     end
     str = str .. nearestCaretCode(payload.message.color) .. payload.message.text
 
-    -- addMessage also handles show-on-message focus and the unread counter internally
-    mpChat.addMessage("", str, nil, TRANSPARENT)
+    -- addMessage also handles show-on-message focus and the unread counter internally.
+    -- username MUST be "Server": it is the only value routed through the color-preserving
+    -- formatTextWithColor(nocolor=false) path - any other username strips every caret code
+    -- to white (BeamMP chat.lua:244-249). The transparent color makes the "Server" prefix
+    -- itself invisible.
+    mpChat.addMessage("Server", str, nil, TRANSPARENT)
 end
 
 ---@param senderName string?
