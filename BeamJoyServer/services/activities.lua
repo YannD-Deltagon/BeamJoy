@@ -409,5 +409,9 @@ M.onMapChanged = onMapChanged
 
 M.getPublicState = getPublicState
 M.broadcastState = broadcastState
+-- public entry for other services (votes: a successful ACTIVITY_START vote starts the
+-- activity with the vote CREATOR as the permission subject)
+M.requestStart = onActivityStart
+M.requestStop = onActivityStop
 
 return M

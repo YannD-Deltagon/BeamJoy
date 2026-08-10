@@ -58,6 +58,39 @@ local function render(ctxt)
         end
     end
 
+    -- Activities dropdown, built dynamically from the framework registry: a new activity
+    -- module appears here with ZERO menu wiring (docs/ACTIVITIES.md). Exclusive activities
+    -- can be started when the slot is free; the running one can be stopped.
+    if beamjoy_activity_framework and
+        beamjoy_permissions.hasAllPermissions(nil, BJ_PERMISSIONS.StartActivity) then
+        local entries = Table()
+        local running = beamjoy_activity_framework.state and
+            beamjoy_activity_framework.state.exclusive or nil
+        table.forEach(beamjoy_activity_framework.registry, function(mod, key)
+            local isRunning = running and running.key == key
+            entries:insert({
+                type = "item",
+                label = beamjoy_lang.translate(mod.LABEL or key, mod.LABEL or key),
+                active = isRunning == true,
+                checked = isRunning == true,
+                disabled = running ~= nil and not isRunning,
+                onClick = function()
+                    if isRunning then
+                        beamjoy_communications.send("activityStop", key)
+                    else
+                        beamjoy_communications.send("activityStart", key)
+                    end
+                    M.toggle()
+                end,
+            })
+        end)
+        if entries:length() > 0 then
+            entries:sort(function(a, b) return a.label < b.label end)
+            RenderMenuDropdown(beamjoy_lang.translate("beamjoy.menu.activities", "Activities"),
+                entries)
+        end
+    end
+
     if beamjoy_config.data.IntroPanel and beamjoy_config.data.IntroPanel.enabled and
         MenuItem(beamjoy_lang.translate("beamjoy.menu.showIntroPanel")) then
         beamjoy_communications_ui.openIntroPanel()

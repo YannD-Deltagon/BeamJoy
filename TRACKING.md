@@ -1015,11 +1015,12 @@ documented `addMessage` API and degrades to their behavior if the module is abse
 
 ### 15.2c Version scheme (2026-08-08)
 
-**`<BeamNG tested>-<BeamMP tested>-<BeamJoy release>`** — current: **`0.39-4.22.1-1`**
-(build 4001, the V4 line). The first segment is *enforced*: `modScript.lua` now gates on the
-game minor version exactly like BeamMP's own modScript (wrong version → loud toast + no
-load, instead of silent breakage). Bump the last segment for BeamJoy releases on the same
-compat pair; bump the first/second when re-validating against a new game/BeamMP version.
+**`<BeamNG tested>-<build>-<BeamJoy version>`** (user-chosen format, 2026-08-08) — current:
+**`0.39-4001-4.0`**. The first segment is *enforced*: `modScript.lua` gates on the game
+minor version exactly like BeamMP's own modScript (wrong version → loud toast + no load).
+The middle segment mirrors the `buildversion` file (bump both together). BeamMP compat
+(currently 4.22.1) is tracked here in TRACKING and via the server's
+`CheckServerVersion(3, 9)` gate.
 
 ### 15.2d Full re-analysis (2026-08-08) — audit + opportunity backlog
 
@@ -1061,6 +1062,24 @@ Also applied: `track by` on the activity window's ng-repeats.
 | high/medium | framework: don't push full `BJActivityState` to Angular on every slice; store re-broadcasts every BJEvent globally (digest pressure) |
 | medium | dispatch() linear handler scan per message; parsePayload deep-copy per message; fitText/autoheight digest costs |
 | low/trivial | tx chunking O(n²) tail-slicing; `sendByPermissions` re-stringify per player |
+
+### 15.2e Design decision — server-driven UI (user question, 2026-08-08)
+
+**Question:** can the client UI be a near-empty shell, with the server sending each page?
+
+**Answer & decision:** the client ZIP is *already* fully server-distributed (BeamMP sends
+`Resources/Client` on join and deletes it on leave), so every UI update is server-controlled
+without any extra machinery — players can never run a stale or modified UI zip against your
+server. For *runtime* server control we use — and generalize — the **descriptor pattern**
+already proven by the activity window: the client ships small generic renderers, the server
+sends *descriptors* (which windows exist, which menus/buttons are visible, labels, actions).
+Menu gating is then real security, because every ACTION is permission-checked server-side in
+the rx handlers regardless of what the UI shows; hiding a menu client-side is cosmetics, the
+rx check is the lock. Full literal page-sending (server-sent HTML rendered via `ngSanitize`/
+the `ngHtml` directive) stays possible for one-off panels (the intro panel already works this
+way with server-sent title/content/image), but building whole interactive menus as raw HTML
+over the wire would trade debuggability and input handling for little real gain — the
+descriptor route gives the same server authority with typed, testable payloads.
 
 ### 15.3 Next steps
 

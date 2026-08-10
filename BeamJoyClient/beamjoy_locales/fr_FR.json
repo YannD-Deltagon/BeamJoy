@@ -273,6 +273,7 @@
 
     // ACTIVITES
     "beamjoy.window.activity": "Activité BeamJoy",
+    "beamjoy.menu.activities": "Activités",
     "beamjoy.activity.join": "Rejoindre",
     "beamjoy.activity.ready": "Prêt",
     "beamjoy.activity.leave": "Quitter",

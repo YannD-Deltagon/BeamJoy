@@ -289,6 +289,7 @@
 
     // ACTIVITIES
     "beamjoy.window.activity": "BeamJoy Activity",
+    "beamjoy.menu.activities": "Activities",
     "beamjoy.activity.join": "Join",
     "beamjoy.activity.ready": "Ready",
     "beamjoy.activity.leave": "Leave",
