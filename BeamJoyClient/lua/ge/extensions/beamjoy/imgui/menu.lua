@@ -59,36 +59,78 @@ local function render(ctxt)
     end
 
     -- Activities dropdown, built dynamically from the framework registry: a new activity
-    -- module appears here with ZERO menu wiring (docs/ACTIVITIES.md). Exclusive activities
-    -- can be started when the slot is free; the running one can be stopped.
-    if beamjoy_activity_framework and
-        beamjoy_permissions.hasAllPermissions(nil, BJ_PERMISSIONS.StartActivity) then
+    -- module appears here with ZERO menu wiring (docs/ACTIVITIES.md).
+    -- EXCLUSIVE modules: start/stop entries, gated by the StartActivity permission (matching
+    -- the dispatcher's own rule). HYBRID modules: join/leave entries, open to EVERY player -
+    -- the dispatcher's onActivityJoin does not require any permission either.
+    if beamjoy_activity_framework then
+        local canStartExclusive = beamjoy_permissions.hasAllPermissions(nil,
+            BJ_PERMISSIONS.StartActivity)
         local entries = Table()
-        local running = beamjoy_activity_framework.state and
-            beamjoy_activity_framework.state.exclusive or nil
+        local state = beamjoy_activity_framework.state
+        local running = state and state.exclusive or nil
         table.forEach(beamjoy_activity_framework.registry, function(mod, key)
-            local isRunning = running and running.key == key
-            entries:insert({
-                type = "item",
-                label = beamjoy_lang.translate(mod.LABEL or key, mod.LABEL or key),
-                active = isRunning == true,
-                checked = isRunning == true,
-                disabled = running ~= nil and not isRunning,
-                onClick = function()
-                    if isRunning then
-                        beamjoy_communications.send("activityStop", key)
-                    else
-                        beamjoy_communications.send("activityStart", key)
-                    end
-                    M.toggle()
-                end,
-            })
+            local serverEntry = running and running.key == key and running
+                or (state and state.hybrids and state.hybrids[key]) or nil
+            local isHybrid = serverEntry and serverEntry.type == "hybrid"
+            -- client modules do not carry TYPE; hybrids are recognizable once their lobby
+            -- exists server-side, and by an optional TYPE field on the client module
+            isHybrid = isHybrid or mod.TYPE == "hybrid"
+            local label = beamjoy_lang.translate(mod.LABEL or key, mod.LABEL or key)
+
+            if isHybrid then
+                local joined = beamjoy_activity_framework.currentKey == key
+                local count = 0
+                if serverEntry and serverEntry.participants then
+                    count = #serverEntry.participants
+                end
+                entries:insert({
+                    type = "item",
+                    label = string.format("%s (%d)", label, count),
+                    active = joined,
+                    checked = joined,
+                    disabled = beamjoy_activity_framework.currentKey ~= nil and not joined,
+                    onClick = function()
+                        beamjoy_communications.send(joined and "activityLeave" or "activityJoin", key)
+                        M.toggle()
+                    end,
+                })
+            elseif canStartExclusive then
+                local isRunning = running and running.key == key
+                entries:insert({
+                    type = "item",
+                    label = label,
+                    active = isRunning == true,
+                    checked = isRunning == true,
+                    disabled = running ~= nil and not isRunning,
+                    onClick = function()
+                        beamjoy_communications.send(isRunning and "activityStop" or "activityStart", key)
+                        M.toggle()
+                    end,
+                })
+            end
         end)
         if entries:length() > 0 then
             entries:sort(function(a, b) return a.label < b.label end)
             RenderMenuDropdown(beamjoy_lang.translate("beamjoy.menu.activities", "Activities"),
                 entries)
         end
+    end
+
+    -- Spectate dropdown: visible while an exclusive activity runs and the local player is
+    -- not a participant (beamjoy_spectate gates itself)
+    if beamjoy_spectate and beamjoy_spectate.isAvailable and beamjoy_spectate.isAvailable() then
+        RenderMenuDropdown(beamjoy_lang.translate("beamjoy.menu.spectate", "Spectate"), {
+            { type = "item", label = beamjoy_lang.translate("beamjoy.spectate.next", "Next participant"),
+                onClick = function() beamjoy_spectate.next() end },
+            { type = "item", label = beamjoy_lang.translate("beamjoy.spectate.prev", "Previous participant"),
+                onClick = function() beamjoy_spectate.prev() end },
+            { type = "item", label = beamjoy_lang.translate("beamjoy.spectate.autoFollow", "Auto-follow leader"),
+                checked = beamjoy_spectate.autoFollow == true,
+                onClick = function() beamjoy_spectate.toggleAutoFollow() end },
+            { type = "item", label = beamjoy_lang.translate("beamjoy.spectate.stop", "Stop spectating"),
+                onClick = function() beamjoy_spectate.stop() end },
+        })
     end
 
     if beamjoy_config.data.IntroPanel and beamjoy_config.data.IntroPanel.enabled and

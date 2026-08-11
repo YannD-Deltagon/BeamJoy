@@ -933,10 +933,10 @@ Open strategic question for the user: which repo hosts the merge (fork of sandbo
 and whether classic V3.0 keeps receiving fixes during the merge (recommended: yes, it is the
 only version players can run until merge Phase 4 delivers scenarios).
 
-## 15. The merge line (branch `0.39-4001-4.0`)
+## 15. The merge line (branch `0.39-4.22.1-4.0`)
 
 > Branch naming convention (user decision, 2026-08-08): the merge line's branch carries the
-> full version string `<BeamNG>-<build>-<BeamJoy>` — currently **`0.39-4001-4.0`** — and is
+> full version string `<BeamNG>-<build>-<BeamJoy>` — currently **`0.39-4.22.1-4.0`** — and is
 > renamed when the version bumps. "V4" in the sections below refers to this line.
 
 > **Goal (user, 2026-08-06): best of both worlds, all features, one all-in-one mod, with a
@@ -1019,8 +1019,9 @@ documented `addMessage` API and degrades to their behavior if the module is abse
 
 ### 15.2c Version scheme (2026-08-08)
 
-**`<BeamNG tested>-<build>-<BeamJoy version>`** (user-chosen format, 2026-08-08) — current:
-**`0.39-4001-4.0`**. The first segment is *enforced*: `modScript.lua` gates on the game
+**`<BeamNG tested>-<BeamMP client tested>-<BeamJoy version>`** (user format, clarified
+2026-08-08) — current: **`0.39-4.22.1-4.0`**. The `buildversion` file (4001) is OUR internal
+build counter, displayed separately in the About menu. The first segment is *enforced*: `modScript.lua` gates on the game
 minor version exactly like BeamMP's own modScript (wrong version → loud toast + no load).
 The middle segment mirrors the `buildversion` file (bump both together). BeamMP compat
 (currently 4.22.1) is tracked here in TRACKING and via the server's
@@ -1084,6 +1085,34 @@ the `ngHtml` directive) stays possible for one-off panels (the intro panel alrea
 way with server-sent title/content/image), but building whole interactive menus as raw HTML
 over the wire would trade debuggability and input handling for little real gain — the
 descriptor route gives the same server authority with typed, testable payloads.
+
+### 15.2f Mass port (2026-08-08) — 8 modules in one wave
+
+16-agent workflow (8 implementers with strict file ownership + 1 adversarial reviewer
+each), then central integration of everything the agents were forbidden to touch
+(dependency lists, beamjoy.js, permission catalogs, 96 locale keys en+fr, F4 menu).
+All 24 review findings (11 blockers, 11 majors — mostly the expected central wiring —
+plus code fixes) applied. Shipped:
+
+| Module | Files | Notes |
+|---|---|---|
+| **Tag Duo** (hybrid proof) | `activities/tagduo.lua` ×2 | pairs, proximity tag, role swap + immunity; menu join/leave open to all |
+| **Derby** | `activities/derby.lua` ×2 | lives, elimination detection, arena data w/ current-positions fallback |
+| **Infected** | `activities/infected.lua` ×2 | random starter, client-reported infections server-validated, starter-leave countdown guard |
+| **Race Multi** | `activities/race.lua` ×2 | V4 race data format, grid teleport w/ retry, checkpoint geometry, standings, DNF; needs per-map data (`activities/<map>/races.json`) |
+| **Reputation/XP** | `services/reputation.lua` + client | reads migrated `data.classic.reputation`, activity participation/win rewards, drift rewards via `gameplay_drift`, level-up toasts |
+| **Integrity** (anti-cheat) | `services/integrity.lua` + client | server-side vehicle edit/spawn VETO for participants in running exclusives (hookWithReturn), shared base input restrictions auto-injected into every activity |
+| **Spectator + F1 board** | `spectate.lua` + `windows/standings` | cycle participants, auto-follow leader (5s dwell), F1-style standings window for everyone |
+| **Votes** | `services/votes.lua` + client + `windows/vote` | kick + activity-start votes, majority threshold, timeouts; vote-driven starts bypass StartActivity via `ctxt.origin="vote"` |
+
+Central additions: dynamic **Activities** menu (exclusive start/stop gated by permission,
+hybrid join/leave open to all with live counts), **Spectate** menu, `VoteKick`/`VoteActivity`
+permissions (default: player), dispatcher vote-origin authorization.
+
+Known follow-ups for the framework (from agent reports): chat-command/console veto mechanism
+(hookWithReturn for commands), dispatcher post-stop notification hook for reputation (currently
+polls state transitions), hybrid-lobby browser in pushUIState, per-participant field
+passthrough in the standings descriptor.
 
 ### 15.3 Next steps
 

@@ -1,0 +1,100 @@
+<style>
+    /* No phantom app for this window (unlike main/config/activity) - fixed default position
+       (top center), same drag/resize/persistence as every other bj-window via
+       beamjoyWindowRect once the player moves it. */
+    #beamjoy-standings {
+        top: 12px;
+        left: calc(50% - 200px);
+        width: 400px;
+        height: 260px;
+    }
+
+    #beamjoy-standings .bj-standings-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+    }
+
+    #beamjoy-standings .bj-standings-table th {
+        text-align: left;
+        opacity: 0.7;
+        font-weight: normal;
+        text-transform: uppercase;
+        font-size: 0.85em;
+        padding: 0.1em 0.5em;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    #beamjoy-standings .bj-standings-table td {
+        padding: 0.2em 0.5em;
+    }
+
+    #beamjoy-standings .bj-standings-row.leader {
+        color: gold;
+        font-weight: bold;
+    }
+
+    #beamjoy-standings .bj-standings-row.eliminated {
+        opacity: 0.5;
+        text-decoration: line-through;
+    }
+
+    #beamjoy-standings .bj-standings-position {
+        width: 1.5em;
+    }
+
+    #beamjoy-standings .bj-standings-status {
+        text-transform: uppercase;
+        font-size: 0.85em;
+        opacity: 0.85;
+        white-space: nowrap;
+    }
+
+    #beamjoy-standings .bj-standings-empty {
+        opacity: 0.6;
+        font-style: italic;
+        padding: 0.4em 0;
+    }
+</style>
+
+<div id="beamjoy-standings" class="position-absolute pointer-events-none">
+    <bj-window
+        window-id="standings"
+        label="beamjoy.standings.title"
+        visible="$ctrl.data.visible"
+        minimizable="true"
+        closable="false"
+        background="true"
+    >
+        <div class="pointer-events-all">
+            <table class="bj-standings-table" ng-if="$ctrl.rows.length">
+                <thead>
+                    <tr>
+                        <th class="bj-standings-position">#</th>
+                        <th>{{ 'beamjoy.standings.driver' | translate }}</th>
+                        <th>{{ 'beamjoy.standings.status' | translate }}</th>
+                        <th>{{ 'beamjoy.standings.gap' | translate }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr
+                        class="bj-standings-row"
+                        ng-repeat="row in $ctrl.rows track by row.name"
+                        ng-class="{eliminated: row.eliminated, leader: row.position === 1}"
+                    >
+                        <td class="bj-standings-position">{{row.position}}</td>
+                        <td>{{row.name}}</td>
+                        <td class="bj-standings-status">
+                            <span ng-if="row.statusKey">{{ row.statusKey | translate }}</span>
+                            <span ng-if="!row.statusKey">{{row.statusText}}</span>
+                        </td>
+                        <td>{{row.gap}}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="bj-standings-empty" ng-if="!$ctrl.rows.length">
+                {{ 'beamjoy.standings.empty' | translate }}
+            </div>
+        </div>
+    </bj-window>
+</div>

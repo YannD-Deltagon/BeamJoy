@@ -23,6 +23,8 @@ BJ_PERMISSIONS = {
     SetCore = "SetCore",
     SetCEN = "SetCEN",
     StartActivity = "StartActivity",
+    VoteKick = "VoteKick",
+    VoteActivity = "VoteActivity",
 }
 
 local M = {

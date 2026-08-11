@@ -23,6 +23,8 @@ BJ_PERMISSIONS = {
     SetCore = "SetCore",
     SetCEN = "SetCEN",
     StartActivity = "StartActivity",
+    VoteKick = "VoteKick",
+    VoteActivity = "VoteActivity",
 }
 
 local M = {
@@ -31,6 +33,8 @@ local M = {
         SendPrivateMessage = "default",
 
         TeleportTo = "player",
+        VoteKick = "player",
+        VoteActivity = "player",
 
         SpawnTrailers = "vip",
 

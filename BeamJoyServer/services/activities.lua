@@ -201,7 +201,10 @@ end
 local function onActivityStart(ctxt, key, settings)
     local module = M.registry[key]
     if not module or module.TYPE ~= M.TYPES.EXCLUSIVE then return end
-    if not services_permissions.hasAllPermissions(ctxt.senderID, BJ_PERMISSIONS.StartActivity) then
+    -- ctxt.origin == "vote": a successful ACTIVITY_START vote is its own authorization
+    -- (services_votes gates vote creation on the VoteActivity permission instead)
+    if ctxt.origin ~= "vote" and
+        not services_permissions.hasAllPermissions(ctxt.senderID, BJ_PERMISSIONS.StartActivity) then
         return
     end
     if M.exclusive then return end -- slot busy

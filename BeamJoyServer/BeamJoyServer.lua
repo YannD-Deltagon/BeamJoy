@@ -39,7 +39,8 @@ local M = {
         "services_core", "services_lang", "services_config", "services_groups",
         "services_players", "services_vehicles", "services_chat", "services_cache",
         "services_permissions", "services_traffic", "services_consoleCommands",
-        "services_activityConfig", "services_activities", "services_chatCommands",
+        "services_activityConfig", "services_activities", "services_integrity",
+        "services_reputation", "services_votes", "services_chatCommands",
         "services_environment", "services_broadcast", "services_maps",
         "communications_rx", "communications_tx" },
 }

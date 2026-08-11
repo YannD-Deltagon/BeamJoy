@@ -1,0 +1,146 @@
+<style>
+    #beamjoy-votes {
+        /* fallback default placement: overridden once BJSendAppsSizesAndPositions carries a
+           "beamjoy-votes" entry (see integration notes on the phantom app slot) */
+        position: absolute;
+        top: 35vh;
+        left: 20vw;
+        width: 20vw;
+        height: 32vh;
+    }
+
+    #beamjoy-votes .bj-votes-section {
+        margin-bottom: 0.6em;
+    }
+
+    #beamjoy-votes .bj-votes-section:last-child {
+        margin-bottom: 0;
+    }
+
+    #beamjoy-votes .bj-votes-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        margin-bottom: 0.3em;
+    }
+
+    #beamjoy-votes .bj-votes-row bj-select {
+        flex-grow: 1;
+    }
+
+    #beamjoy-votes .bj-votes-active-type {
+        text-transform: uppercase;
+        font-weight: bold;
+        opacity: 0.8;
+    }
+
+    #beamjoy-votes .bj-votes-voters {
+        margin: 0.4em 0;
+        font-weight: bold;
+    }
+
+    #beamjoy-votes .bj-votes-actions {
+        margin-top: 0.5em;
+        display: flex;
+        gap: 0.5em;
+        flex-wrap: wrap;
+    }
+
+</style>
+
+<div id="beamjoy-votes" class="pointer-events-none">
+    <bj-window
+        window-id="votes"
+        label="{{ 'beamjoy.window.votes' | translate }}"
+        visible="$ctrl.data.vote || $ctrl.data.canStartKick || $ctrl.data.canStartActivity"
+        minimizable="true"
+        closable="false"
+        background="true"
+    >
+        <div class="pointer-events-all">
+            <div ng-if="!$ctrl.data.vote">
+                <div class="bj-votes-section" ng-if="$ctrl.data.canStartKick">
+                    <div>{{ 'beamjoy.votes.startKick.title' | translate }}</div>
+                    <div class="bj-votes-row">
+                        <bj-select
+                            ng-model="$ctrl.selectedTarget"
+                            options="$ctrl.data.players"
+                        ></bj-select>
+                        <div
+                            class="btn primary"
+                            ng-class="{disabled: !$ctrl.selectedTarget}"
+                            ng-click="$ctrl.startKick()"
+                        >
+                            {{ 'beamjoy.votes.startKick.button' | translate }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bj-votes-section" ng-if="$ctrl.data.canStartActivity">
+                    <div>{{ 'beamjoy.votes.startActivity.title' | translate }}</div>
+                    <div class="bj-votes-row">
+                        <bj-select
+                            ng-model="$ctrl.selectedActivity"
+                            options="$ctrl.data.activities"
+                        ></bj-select>
+                        <div
+                            class="btn primary"
+                            ng-class="{disabled: !$ctrl.selectedActivity}"
+                            ng-click="$ctrl.startActivity()"
+                        >
+                            {{ 'beamjoy.votes.startActivity.button' | translate }}
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div ng-if="$ctrl.data.vote">
+                <div class="bj-votes-active-type">
+                    {{ ('beamjoy.votes.type.' + $ctrl.data.vote.type) | translate }}
+                </div>
+
+                <div ng-if="$ctrl.data.vote.type === 'kick'">
+                    {{ 'beamjoy.votes.target' | translate }}:
+                    <strong>{{ $ctrl.data.vote.payload.targetName }}</strong>
+                </div>
+                <div ng-if="$ctrl.data.vote.type === 'activityStart'">
+                    {{ 'beamjoy.votes.activity' | translate }}:
+                    <strong>{{ ($ctrl.data.vote.payload.label || $ctrl.data.vote.payload.key) | translate }}</strong>
+                </div>
+
+                <div>
+                    {{ 'beamjoy.votes.creator' | translate }}:
+                    <strong>{{ $ctrl.data.vote.creatorName }}</strong>
+                </div>
+
+                <div class="bj-votes-voters">
+                    {{ 'beamjoy.votes.votes' | translate }}:
+                    {{ $ctrl.data.vote.votersCount }} / {{ $ctrl.data.vote.threshold }}
+                </div>
+
+                <div>
+                    {{ 'beamjoy.votes.timeLeft' | translate }}:
+                    {{ $ctrl.remaining }}s
+                </div>
+
+                <div class="bj-votes-actions">
+                    <div
+                        class="btn"
+                        ng-class="{success: $ctrl.data.vote.self.hasVoted, primary: !$ctrl.data.vote.self.hasVoted}"
+                        ng-click="$ctrl.cast()"
+                    >
+                        {{ (($ctrl.data.vote.self.hasVoted ? 'beamjoy.votes.voted' : 'beamjoy.votes.vote')) | translate }}
+                    </div>
+                    <div
+                        class="btn danger"
+                        ng-if="$ctrl.data.canCancel"
+                        ng-click="$ctrl.cancel()"
+                    >
+                        {{ 'beamjoy.votes.cancel' | translate }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </bj-window>
+</div>

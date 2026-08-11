@@ -43,6 +43,8 @@ await import(`/ui/modModules/beamjoy/windows/hud/app.js`);
 await import(`/ui/modModules/beamjoy/windows/main/app.js`);
 await import(`/ui/modModules/beamjoy/windows/config/app.js`);
 await import(`/ui/modModules/beamjoy/windows/activity/app.js`);
+await import(`/ui/modModules/beamjoy/windows/standings/app.js`);
+await import(`/ui/modModules/beamjoy/windows/vote/app.js`);
 
 beamjoyModule.component("beamjoy", {
     template: ``,
@@ -64,6 +66,8 @@ beamjoyModule.component("beamjoy", {
                         <bj-main></bj-main>
                         <bj-config></bj-config>
                         <bj-activity></bj-activity>
+                        <bj-standings></bj-standings>
+                        <bj-votes></bj-votes>
                     `);
                 $compile(el)($rootScope);
                 angular.element(wrapper).append(el);
