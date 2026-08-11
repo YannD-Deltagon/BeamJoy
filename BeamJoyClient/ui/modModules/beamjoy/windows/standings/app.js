@@ -59,7 +59,9 @@ angular.module("beamjoy").component("bjStandings", {
         };
 
         const rebuild = () => {
-            const participants = this.data.participants || [];
+            // empty Lua tables serialize as {} - coerce before Array methods
+            const raw = this.data.participants || [];
+            const participants = Array.isArray(raw) ? raw : Object.values(raw);
             const phase = this.data.phase;
             const state = this.data.state;
             this.rows = participants.map((p, i) => {

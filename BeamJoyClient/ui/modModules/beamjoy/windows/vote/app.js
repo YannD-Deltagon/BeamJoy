@@ -24,8 +24,16 @@ angular.module("beamjoy").component("bjVotes", {
             }
         });
 
+        // EMPTY Lua tables serialize as {} (object), not [] - coerce before using Array
+        // methods, otherwise the thrown TypeError breaks the whole Angular $broadcast chain
+        // and windows registered after this one never receive their events
+        const asArray = (v) => (Array.isArray(v) ? v : Object.values(v || {}));
+
         $rootScope.$on("BJVoteState", (_, state) => {
-            this.data = state || { vote: null, players: [], activities: [], canStartKick: false, canStartActivity: false, canCancel: false };
+            this.data = state || {};
+            this.data.players = asArray(this.data.players);
+            this.data.activities = asArray(this.data.activities);
+            this.data.vote = this.data.vote || null;
             // keep the pickers pointed at a valid option as the roster/activity list changes
             if (!this.data.players.find((p) => p.value === this.selectedTarget)) {
                 this.selectedTarget = this.data.players.length ? this.data.players[0].value : null;
