@@ -1114,6 +1114,34 @@ Known follow-ups for the framework (from agent reports): chat-command/console ve
 polls state transitions), hybrid-lobby browser in pushUIState, per-participant field
 passthrough in the standings descriptor.
 
+### 15.2g Test readiness (2026-08-11) — pre-flight PASSED
+
+- **120 Lua files syntax-checked: 0 errors** (luaparser over the whole mod).
+- **Cross-module reference audit: 0 unresolved symbols** (every `provider.symbol` call in
+  the 8 new modules + menu verified against the provider's real exports; 17 initial flags
+  were all fields in `local M = {...}` literals, confirmed present).
+- **Deployment integrity**: `L:\...\Server\BeamJoyServer` + `BeamJoyServerHooks` byte-identical
+  to the repo; `BeamJoyClient.zip` (183 files) carries version `0.39-4.22.1-4.0` and the
+  post-review fixes (race grid retry verified inside the zip).
+- Old V3 test DB archived as `BeamJoyData.v3.bak`; V4 regenerates a fresh one.
+- ServerConfig: map `gridmap_v2` (vanilla), port 30814 — sane.
+
+**Test protocol** (2 players needed for activities — MIN_PLAYERS = 2):
+1. Boot: `Loading BeamJoyServer (v0.39-4.22.1-4.0, build 4001)` + zero `[ERROR]` in Server.log;
+   expect the activity registrations (`Activity "speed" registered (exclusive)` ×5).
+2. Join: loading screen exits, F4 menu bar renders, main window opens; `bj group <name> owner`.
+3. UI: windows draggable/resizable, positions persist, Activities + Spectate menus present.
+4. Speed (2p): start via F4 → join/ready in the activity window → countdown → ramp →
+   self-elimination (HUD warnings) → winner + results freeze → auto-close.
+5. Tag Duo: join from menu (no permission needed), pairing, tag by proximity, role swap.
+6. Derby, Infected: same flow; both fall back to current positions (no arena data yet).
+7. Integrity: during a running activity, try opening vehicle/parts selectors (blocked
+   client-side) and editing the vehicle (vetoed server-side, logged).
+8. Votes: as non-staff, start a kick vote + an activity vote from the vote window.
+9. Spectator: 3rd player (or after elimination) — Spectate menu, cycle, auto-follow,
+   F1 standings window.
+10. Capture on any failure: timestamp + `beamng.log` (client) and `Server.log` excerpts.
+
 ### 15.3 Next steps
 
 1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).
