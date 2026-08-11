@@ -7,7 +7,7 @@
 --- beamjoy/activity/framework.lua's "activityDenied" handler).
 
 local M = {
-    dependencies = { "beamjoy_communications", "beamjoy_communications_ui",
+    dependencies = { "beamjoy_communications", "beamjoy_communications_ui", "beamjoy_lang",
         "beamjoy_players", "beamjoy_permissions", "beamjoy_activity_framework" },
 
     ---@type table? last received public state ({active?})

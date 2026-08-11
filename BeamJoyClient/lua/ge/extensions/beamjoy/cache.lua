@@ -13,7 +13,7 @@ local function onInit()
 end
 
 local function requireCaches()
-    beamjoy_communications.send("requireCaches")
+    beamjoy_communications.send("requestCaches")
 end
 
 M.onInit = onInit

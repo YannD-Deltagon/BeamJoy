@@ -45,7 +45,14 @@ local function save(filePath, data)
     end
 end
 
+--- for modules that touch M.dbPath directly in their onInit (dao_activity, dao_players):
+--- guarantees dbPath is computed regardless of the unordered onInit fan-out
+local function ensureInit()
+    if not M.init then init() end
+end
+
 M.get = get
 M.save = save
+M.ensureInit = ensureInit
 
 return M

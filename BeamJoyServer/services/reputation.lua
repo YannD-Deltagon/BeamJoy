@@ -139,6 +139,18 @@ end
 
 --- edge-detects a single activity entry's transition into "ended" and rewards once
 ---@param entry table? {key, phase, participants, state} (see services/activities.lua getPublicState)
+--- the edge-detector state must be cleared once a handle disappears, otherwise the stale
+--- "ended" value suppresses reward detection for every later run of the same activity key
+local function clearGoneActivities(state)
+    for key in pairs(M.lastActivityPhase) do
+        local stillThere = (state.exclusive and state.exclusive.key == key)
+            or (state.hybrids and state.hybrids[key] ~= nil)
+        if not stillThere then
+            M.lastActivityPhase[key] = nil
+        end
+    end
+end
+
 local function checkActivityEnded(entry)
     if not entry or not entry.key then return end
     local previousPhase = M.lastActivityPhase[entry.key]
@@ -156,6 +168,7 @@ end
 
 local function onSlowUpdate()
     local ok, state = pcall(services_activities.getPublicState)
+    if ok and state then clearGoneActivities(state) end
     if not ok or not state then return end
     checkActivityEnded(state.exclusive)
     table.forEach(state.hybrids or {}, checkActivityEnded)

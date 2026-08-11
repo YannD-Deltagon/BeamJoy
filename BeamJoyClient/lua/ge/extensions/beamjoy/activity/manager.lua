@@ -1,5 +1,5 @@
 local M = {
-    dependencies = {},
+    dependencies = { "beamjoy_communications" },
 
     data = {
         ---@type GizmoObject[]

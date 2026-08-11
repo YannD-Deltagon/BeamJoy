@@ -4,6 +4,7 @@ local M = {
 }
 
 local function onInit()
+    dao_main.ensureInit() -- dbPath is lazily computed; onInit fan-out order is unspecified
     if not FS.Exists(dao_main.dbPath .. "/" .. M.path) then
         FS.CreateDirectory(dao_main.dbPath .. "/" .. M.path)
     end

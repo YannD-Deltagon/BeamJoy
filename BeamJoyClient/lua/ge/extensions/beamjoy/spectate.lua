@@ -17,7 +17,8 @@
 --- owned here - see docs/ACTIVITIES.md-style integration notes returned alongside this file).
 
 local M = {
-    dependencies = { "camera", "beamjoy_vehicles", "beamjoy_players", "beamjoy_activity_framework" },
+    dependencies = { "camera", "beamjoy_vehicles", "beamjoy_players", "beamjoy_activity_framework",
+        "beamjoy_communications_ui" },
 
     MIN_DWELL_MS = 5000, -- auto-follow won't re-target more often than this
 
