@@ -1142,6 +1142,32 @@ passthrough in the standings descriptor.
    F1 standings window.
 10. Capture on any failure: timestamp + `beamng.log` (client) and `Server.log` excerpts.
 
+### 15.2h FIRST LIVE TEST SESSION (2026-08-11) — SUCCESS
+
+The server ran live (launched from this PC over the L: share, with a stdin command pipe for
+live console control). Results:
+
+- ✅ **Server boot 100 % clean** — 5 activities registered, mods scan, BeamMP session up.
+- ✅ **Client join end-to-end**: zip served (43 ms), version gate passed, Lua loaded
+  (`BeamJoyClient loaded v0.39-4.22.1-4.0`), UI reload picked up the Angular module,
+  **menus open in-game** (user confirmed), owner flow works (auto-promotion of the guest
+  via the console pipe — guests can't persist groups, so the watcher promotes on sync).
+- 🔧 **Live hotfix 1**: empty Lua tables serialize as `{}` → `TypeError` in the vote window
+  → **broke the whole Angular $broadcast chain**, hiding the UI. Fixed + standings hardened.
+- 🔧 **Live hotfix 2** (final boot-trace findings): reputation edge-detector never cleared
+  (no rewards after the first run), dao dbPath lazy-init race, 3 missing dep declarations,
+  `requireCaches`→`requestCaches` pre-existing mismatch.
+- 📌 Backlog: `caches.players` ships name-keyed (numeric names mangled) — pre-existing
+  sandbox wire shape, coordinated client+server change needed.
+
+**USER DIRECTION (end of session): prefers the classic BeamJoy imgui UI over the sandbox
+HTML UI.** Recommendation given: go full classic imgui for in-session UI (we own the
+optimized V3 layer; BeamMP itself moved in-session UI to imgui in 0.39; every live bug
+tonight came from the Angular stack; AngularJS is legacy in BeamNG's Vue migration).
+**→ Next session: port the V3 imgui window system (Builders/WindowsManager/CommonStyle +
+Main window + server theme) into V4, migrate activity/votes/standings windows to imgui,
+retire the Angular layer progressively (keep the HTML intro panel).**
+
 ### 15.3 Next steps
 
 1. **In-game validation** of the framework + Speed on the test server (build & deploy V4).
